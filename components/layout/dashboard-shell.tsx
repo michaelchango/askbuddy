@@ -101,8 +101,8 @@ export function DashboardShell({
       <header className="flex h-[63px] shrink-0 items-center justify-between border-b border-[#1111111a] bg-white px-7">
         <Link href="/dashboard" className="flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-orange.png" alt="PRDHub" className="h-[40px] w-auto" />
-          <span className="text-[22px] font-bold text-[#111111]">PRDHub</span>
+          <img src="/logo-orange.png" alt="AskBuddy" className="h-[40px] w-auto" />
+          <span className="text-[22px] font-bold text-[#111111]">AskBuddy</span>
         </Link>
 
         <div className="flex items-center gap-2">

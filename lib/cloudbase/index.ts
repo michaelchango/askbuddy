@@ -14,7 +14,8 @@ export interface AuthUser {
  */
 export async function getCurrentUser(): Promise<AuthUser | null> {
   if (USE_MOCK) {
-    return { uid: "mock-user-001", email: "dev@prdflow.local" };
+    // ⚠️ uid 保持 "mock-user-001" 不变：存量数据以该 uid 归属，不可随品牌改名。
+    return { uid: "mock-user-001", email: "dev@askbuddy.local" };
   }
   // TODO: 接入 CloudBase 身份认证 verifySession()
   return null;

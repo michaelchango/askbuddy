@@ -17,6 +17,7 @@ import type { OutputMeta, OutputType } from "@/lib/services/outputs";
 import { nextStepOf } from "@/lib/steps-meta";
 import type { RequirementStatus, RequirementStep, StepName } from "@/types";
 import { cn } from "@/lib/utils";
+import { EVT } from "@/lib/events";
 import { requirementStatusMeta } from "@/lib/display";
 import {
   requestPermission,
@@ -272,7 +273,7 @@ export function RequirementShell({
               try {
                 const data = JSON.parse(raw) as { content: string };
                 window.dispatchEvent(
-                  new CustomEvent("prdflow:gen-message", { detail: { content: data.content, requirementId } })
+                  new CustomEvent(EVT.GEN_MESSAGE, { detail: { content: data.content, requirementId } })
                 );
               } catch { /* ignore */ }
             }
@@ -422,7 +423,7 @@ export function RequirementShell({
 
       // 发送完成总结消息（含 card 等全部受影响输出物，供总结展示）
       window.dispatchEvent(
-        new CustomEvent("prdflow:change-complete", {
+        new CustomEvent(EVT.CHANGE_COMPLETE, {
           detail: {
             requirementId,
             affectedOutputs,
@@ -446,8 +447,8 @@ export function RequirementShell({
       // 自动开始变更更新流程（携带各文档变更点，用于精准重生成）
       processChangeQueue(detail.affectedOutputs, detail.changes ?? []);
     };
-    window.addEventListener("prdflow:change-update", handler);
-    return () => window.removeEventListener("prdflow:change-update", handler);
+    window.addEventListener(EVT.CHANGE_UPDATE, handler);
+    return () => window.removeEventListener(EVT.CHANGE_UPDATE, handler);
   }, [requirementId, processChangeQueue]);
 
   // 原型生成函数引用（定义于下方，用 ref 避免初始化顺序导致的 TDZ）
@@ -505,7 +506,7 @@ export function RequirementShell({
     const step = pendingPrompt?.step;
     const defaultText = step ? RETURN_MODIFY_TEXT[step] : "请帮我修改：\n";
     window.dispatchEvent(
-      new CustomEvent("prdflow:request-modify", { detail: { defaultText } })
+      new CustomEvent(EVT.REQUEST_MODIFY, { detail: { defaultText } })
     );
   }, [pendingPrompt]);
 
@@ -594,7 +595,7 @@ export function RequirementShell({
               try {
                 const data = JSON.parse(raw) as { content: string };
                 window.dispatchEvent(
-                  new CustomEvent("prdflow:gen-message", { detail: { content: data.content, requirementId } })
+                  new CustomEvent(EVT.GEN_MESSAGE, { detail: { content: data.content, requirementId } })
                 );
               } catch {
                 /* ignore */
@@ -649,7 +650,6 @@ export function RequirementShell({
 
   // 通知功能诊断：页面挂载时输出权限状态 / 安全上下文 / 来源
   useEffect(() => {
-    console.log(Notification.permission, window.isSecureContext, location.origin);
   }, []);
 
   // 监听对话面板的 proceed_prompt 事件（AI 提示进入下一步）
@@ -693,8 +693,8 @@ export function RequirementShell({
         version: detail.version,
       });
     };
-    window.addEventListener("prdflow:proceed-prompt", handler);
-    return () => window.removeEventListener("prdflow:proceed-prompt", handler);
+    window.addEventListener(EVT.PROCEED_PROMPT, handler);
+    return () => window.removeEventListener(EVT.PROCEED_PROMPT, handler);
   }, [requirementId, handleProceed]);
 
   // 退出重进会话后，从持久化的步骤状态恢复确认闸门：
@@ -764,8 +764,8 @@ export function RequirementShell({
             <div className="flex items-center gap-3">
               <Link href="/dashboard" className="flex items-center gap-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/logo-orange.png" alt="PRDHub" className="h-[40px] w-auto" />
-                <span className="text-[22px] font-bold text-[#111111]">PRDHub</span>
+                <img src="/logo-orange.png" alt="AskBuddy" className="h-[40px] w-auto" />
+                <span className="text-[22px] font-bold text-[#111111]">AskBuddy</span>
               </Link>
               <span className="h-[22px] w-px bg-[#1111111a]" />
               <nav className="flex items-center gap-1.5 text-[15.75px]">

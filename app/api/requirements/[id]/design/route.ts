@@ -17,9 +17,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const body = await req.json().catch(() => ({}));
   const mode: "normal" | "change" = body?.mode === "change" ? "change" : "normal";
 
-  // [TRACE] 路由入口诊断日志
-  console.log("[route|design] POST 入口", { id: params.id, mode, changeNote: body?.changeNote });
-
   // 方案设计进入【进行中】
   await markStepInProgress(params.id, "design").catch(() => {});
 
@@ -37,26 +34,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         const stepsEarly = await getSteps(params.id);
         controller.enqueue(encoder.encode(`event: step_update\ndata: ${JSON.stringify(stepsEarly)}\n\n`));
 
-        console.log("[trace|design] 开始读取 SSE 流");
-
         const reader = stream.getReader();
-        let chunkCount = 0;
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
           full += value;
-          chunkCount++;
-          if (chunkCount <= 3 || chunkCount % 10 === 0) {
-            console.log("[trace|design] SSE chunk", { chunkCount, length: value.length, fullLen: full.length });
-          }
           controller.enqueue(encoder.encode(`event: delta\ndata: ${JSON.stringify(full)}\n\n`));
         }
 
-        console.log("[trace|design] SSE 流读取完成", { chunkCount, fullLen: full.length, fullPreview: full.slice(0, 200) });
-        console.log("[trace|design] 即将调用 finalizeStep solution_writing");
-
         const result = await finalizeStep("solution_writing", params.id, full);
-        console.log("[trace|design] finalizeStep 返回", { type: result.type });
 
         const version = (result.result as { version?: number })?.version;
 

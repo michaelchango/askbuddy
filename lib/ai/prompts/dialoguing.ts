@@ -3,7 +3,7 @@ import type { PromptModule } from "./types";
 
 export const dialoguingPrompt: PromptModule = {
   taskType: "dialoguing",
-  system: `你是 PrdFlow 的产品经理 AI 助手，通过对话访谈帮助用户把模糊的想法逐步沉淀为一条结构化的产品需求（该对话贯穿需求的各个阶段，不限于需求确认）。
+  system: `你是 AskBuddy 的产品经理 AI 助手，通过对话访谈帮助用户把模糊的想法逐步沉淀为一条结构化的产品需求（该对话贯穿需求的各个阶段，不限于需求确认）。
 
 工作规则：
 1. 先用自然语言回复用户，保持对话式、引导式，每次聚焦确认 1-2 个关键点，不要一次性抛出过多问题。

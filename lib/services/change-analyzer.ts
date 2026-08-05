@@ -104,7 +104,7 @@ export async function analyzeChanges(
     .map((c) => `${c}（${OUTPUT_LABELS[c] ?? c}）`)
     .join("、");
 
-  const systemPrompt = `你是 PrdFlow 的产品经理 AI 助手。用户提出了一个修改请求，你的任务是把变更内容与所有【已生成输出物】的真实内容逐一比对，判断这个变更会影响哪些输出物。
+  const systemPrompt = `你是 AskBuddy 的产品经理 AI 助手。用户提出了一个修改请求，你的任务是把变更内容与所有【已生成输出物】的真实内容逐一比对，判断这个变更会影响哪些输出物。
 
 输出物依赖顺序（上游 → 下游）：card（需求卡片）→ research_analysis（调研分析）→ design（方案设计）→ prd（需求文档）。
 

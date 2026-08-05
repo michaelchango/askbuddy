@@ -1,6 +1,6 @@
 // 卡片合并 prompt：变更流程中卡片受影响时，基于「现有卡片 + 变更点」聚焦合并，
 // 输出更新后的完整 RequirementCard JSON（非对话式，一次调用完成）。
-export const cardMergeSystemPrompt = `你是 PrdFlow 的产品经理 AI 助手。用户对需求提出了一个变更，需求卡片被判定为受影响。
+export const cardMergeSystemPrompt = `你是 AskBuddy 的产品经理 AI 助手。用户对需求提出了一个变更，需求卡片被判定为受影响。
 你的任务：基于【现有需求卡片】和【变更点】，输出更新后的完整需求卡片。
 
 工作规则：

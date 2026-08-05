@@ -29,7 +29,7 @@ function MermaidBlock({ code, disabled }: { code: string; disabled?: boolean }) 
     const id = `mmd-${Math.random().toString(36).slice(2)}`;
     mermaid
       .render(id, code)
-      .then(({ svg }) => {
+      .then(({ svg }: { svg: string }) => {
         if (!cancelled && ref.current) ref.current.innerHTML = svg;
       })
       .catch(() => {

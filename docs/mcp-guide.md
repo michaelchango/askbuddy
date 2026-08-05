@@ -1,6 +1,6 @@
-# PRDTube MCP 接入说明
+# AskBuddy MCP 接入说明
 
-PRDTube 内置一个 **MCP（Model Context Protocol）Server**，通过 `stdio` 把需求流程的产出物
+AskBuddy 内置一个 **MCP（Model Context Protocol）Server**，通过 `stdio` 把需求流程的产出物
 （需求卡片、调研分析、可交互原型、PRD 文档）暴露给 Claude / Cursor / 任意支持 MCP 的 AI 编码工具，
 让 AI 在写代码时能直接消费「方案设计 → 原型 → PRD」的成果，无需人工复制粘贴。
 
@@ -12,26 +12,26 @@ PRDTube 内置一个 **MCP（Model Context Protocol）Server**，通过 `stdio` 
 AI 编码工具 (Claude / Cursor)
         │  stdio（MCP 协议）
         ▼
-prdflow-mcp Server  (mcp/server.ts)
+askbuddy-mcp Server (mcp/server.ts)
         │  HTTP + Bearer(PAT)
         ▼
-PRDTube 后端  GET /api/mcp/requirement/{id}...
+AskBuddy 后端  GET /api/mcp/requirement/{id}...
         │
         ▼
   数据库（需求 / 调研 / 原型 / PRD）
 ```
 
 - MCP Server 是一个**独立进程**，通过 `stdio` 与客户端通信。
-- 它自己并不访问数据库，而是以 HTTP 调用 PRDTube 后端暴露的 `/api/mcp/*` 只读接口。
+- 它自己并不访问数据库，而是以 HTTP 调用 AskBuddy 后端暴露的 `/api/mcp/*` 只读接口。
 - 鉴权使用 **PAT（Personal Access Token）**，作为 `Authorization: Bearer <token>` 传给后端。
 
 ---
 
 ## 2. 前置条件
 
-1. **PRDTube 服务端已启动**（本地默认 `http://localhost:3000`，或任意已部署的地址）。
+1. **AskBuddy 服务端已启动**（本地默认 `http://localhost:3000`，或任意已部署的地址）。
 2. **Node.js ≥ 18**（MCP SDK 与 `tsx` 需要）。
-3. 你已在 PRDTube 中完成至少一个需求，并拿到其 `requirementId`。
+3. 你已在 AskBuddy 中完成至少一个需求，并拿到其 `requirementId`。
 
 ---
 
@@ -39,7 +39,7 @@ PRDTube 后端  GET /api/mcp/requirement/{id}...
 
 MCP Server 通过 Bearer Token 调用后端接口，需要先创建 PAT：
 
-1. 登录 PRDTube Web 端。
+1. 登录 AskBuddy Web 端。
 2. 调用令牌创建接口（或在控制台「访问令牌」页面创建）：
 
    ```bash
@@ -55,7 +55,7 @@ MCP Server 通过 Bearer Token 调用后端接口，需要先创建 PAT：
    { "ok": true, "data": { "id": "tk_xxx", "token": "YOUR_PAT_HERE", "name": "mcp-local" } }
    ```
 
-3. 复制 `data.token` 字段的值（即上一步生成的**完整** PAT），它就是 MCP Server 要用的 `PRDFLOW_TOKEN`。
+3. 复制 `data.token` 字段的值（即上一步生成的**完整** PAT），它就是 MCP Server 要用的 `ASKBUDDY_TOKEN`。
    > **注意**：`token` 是一串随机的十六进制字符串（形如 `a1b2c3...f9e8`，共 48 位），**没有固定的前缀**。请整段复制，不要把它当作「某个前缀 + 你的密钥」的格式。
    > 令牌仅在创建时明文返回一次，请妥善保存。
 
@@ -73,8 +73,8 @@ npm install
 直接以源码运行（推荐，无需编译）：
 
 ```bash
-PRDFLOW_BASE_URL=http://localhost:3000 \
-PRDFLOW_TOKEN=YOUR_PAT_HERE \
+ASKBUDDY_BASE_URL=http://localhost:3000 \
+ASKBUDDY_TOKEN=YOUR_PAT_HERE \
 npx tsx server.ts
 ```
 
@@ -85,7 +85,7 @@ npm run build      # 产出 dist/
 node dist/server.js
 ```
 
-看到终端输出 `PrdFlow MCP server running on stdio` 即表示启动成功（该进程由 AI 客户端托管，无需手动常驻）。
+看到终端输出 `AskBuddy MCP server running on stdio` 即表示启动成功（该进程由 AI 客户端托管，无需手动常驻）。
 
 ---
 
@@ -99,12 +99,12 @@ Windows：`%APPDATA%\Claude\claude_desktop_config.json`）：
 ```json
 {
   "mcpServers": {
-    "prdflow": {
+    "askbuddy": {
       "command": "npx",
-      "args": ["tsx", "/绝对路径/PRDTube/mcp/server.ts"],
+      "args": ["tsx", "/绝对路径/AskBuddy/mcp/server.ts"],
       "env": {
-        "PRDFLOW_BASE_URL": "http://localhost:3000",
-        "PRDFLOW_TOKEN": "YOUR_PAT_HERE"
+        "ASKBUDDY_BASE_URL": "http://localhost:3000",
+        "ASKBUDDY_TOKEN": "YOUR_PAT_HERE"
       }
     }
   }
@@ -113,7 +113,7 @@ Windows：`%APPDATA%\Claude\claude_desktop_config.json`）：
 
 > 把 `YOUR_PAT_HERE` **整段替换**为你在「访问令牌」页面创建得到的完整 Token（它是一串纯十六进制字符，没有 `pat_` 之类的前缀）。
 
-重启 Claude Desktop 后，在对话中即可看到 `prdflow` 提供的工具。
+重启 Claude Desktop 后，在对话中即可看到 `askbuddy` 提供的工具。
 
 ### 5.2 Cursor
 
@@ -122,12 +122,12 @@ Windows：`%APPDATA%\Claude\claude_desktop_config.json`）：
 ```json
 {
   "mcpServers": {
-    "prdflow": {
+    "askbuddy": {
       "command": "npx",
-      "args": ["tsx", "/绝对路径/PRDTube/mcp/server.ts"],
+      "args": ["tsx", "/绝对路径/AskBuddy/mcp/server.ts"],
       "env": {
-        "PRDFLOW_BASE_URL": "http://localhost:3000",
-        "PRDFLOW_TOKEN": "YOUR_PAT_HERE"
+        "ASKBUDDY_BASE_URL": "http://localhost:3000",
+        "ASKBUDDY_TOKEN": "YOUR_PAT_HERE"
       }
     }
   }
@@ -142,7 +142,7 @@ Windows：`%APPDATA%\Claude\claude_desktop_config.json`）：
 
 只要支持 `stdio` 传输，用相同方式填入：
 - `command`: 可运行 `tsx server.ts` 的 Node 入口（建议用 `npx tsx <绝对路径>/server.ts` 或 `node <绝对路径>/dist/server.js`）；
-- `env`: 必须包含 `PRDFLOW_TOKEN`，可选 `PRDFLOW_BASE_URL`。
+- `env`: 必须包含 `ASKBUDDY_TOKEN`，可选 `ASKBUDDY_BASE_URL`。
 
 ---
 
@@ -178,18 +178,24 @@ AI 会自行调用 `requirement_prd` / `requirement_prototype` / `requirement_re
 
 | 变量 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
-| `PRDFLOW_TOKEN` | 是 | 空 | PAT，作为 `Authorization: Bearer` 传给后端。缺失时所有接口返回 401。 |
-| `PRDFLOW_BASE_URL` | 否 | `http://localhost:3000` | PRDTube 后端地址。部署到远程时改为对应域名（含协议）。 |
+| `ASKBUDDY_TOKEN` | 是 | 空 | PAT，作为 `Authorization: Bearer` 传给后端。缺失时所有接口返回 401。 |
+| `ASKBUDDY_BASE_URL` | 否 | `http://localhost:3000` | AskBuddy 后端地址。部署到远程时改为对应域名（含协议）。 |
+
+---
+
+> **兼容说明**：为便于存量用户平滑迁移，MCP Server 仍会识别历史变量名
+> `PRDFLOW_BASE_URL` / `PRDFLOW_TOKEN`（新变量 `ASKBUDDY_*` 优先生效）。
+> 该兼容为过渡措施，将在后续版本移除，请尽快改用 `ASKBUDDY_*`。
 
 ---
 
 ## 9. 常见问题排查
 
 - **工具列表为空 / `connected` 失败**：确认 `npx tsx <路径>/server.ts` 能在终端手动跑通，且依赖已 `npm install`。
-- **调用工具返回 401 `unauthorized`**：`PRDFLOW_TOKEN` 未配置或令牌失效，重新创建 PAT 并更新配置。
-- **调用工具返回 404 `not_found`**：该需求尚未生成对应产物（如原型 / PRD 还未确认），请先在 PRDTube 流程中完成该步骤。
-- **读到的是旧内容**：`/api/mcp/*` 为只读实时查询，刷新即可获取最新版本；若仍滞后，确认 PRDTube 后端进程是同一实例。
-- **远程部署场景**：将 `PRDFLOW_BASE_URL` 指向线上地址，并确保该地址的 `/api/mcp/*` 路由对外可访问、且 PAT 属于同一用户。
+- **调用工具返回 401 `unauthorized`**：`ASKBUDDY_TOKEN` 未配置或令牌失效，重新创建 PAT 并更新配置。
+- **调用工具返回 404 `not_found`**：该需求尚未生成对应产物（如原型 / PRD 还未确认），请先在 AskBuddy 流程中完成该步骤。
+- **读到的是旧内容**：`/api/mcp/*` 为只读实时查询，刷新即可获取最新版本；若仍滞后，确认 AskBuddy 后端进程是同一实例。
+- **远程部署场景**：将 `ASKBUDDY_BASE_URL` 指向线上地址，并确保该地址的 `/api/mcp/*` 路由对外可访问、且 PAT 属于同一用户。
 
 ---
 

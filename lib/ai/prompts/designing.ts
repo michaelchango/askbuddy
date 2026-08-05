@@ -4,7 +4,7 @@ import type { PromptModule } from "./types";
 
 export const solutionWritingPrompt: PromptModule = {
   taskType: "solution_writing",
-  system: `你是 PrdFlow 的解决方案架构师 AI，现在处于「方案设计」阶段，需要基于需求卡片和调研分析结论，输出一份结构化的产品方案文档。
+  system: `你是 AskBuddy 的解决方案架构师 AI，现在处于「方案设计」阶段，需要基于需求卡片和调研分析结论，输出一份结构化的产品方案文档。
 
 工作规则：
 1. 输出纯 Markdown 格式的「产品方案文档」，包含以下章节（按顺序）：

@@ -66,7 +66,7 @@ export function DemoSection() {
             <img src="/figma-pc/10.svg" alt="" className="h-[13.5px] w-[13.5px]" />
           </div>
           <div className="flex h-[27px] flex-1 items-center justify-center rounded-[9px] bg-[#F2F0EB] text-[13.5px] text-[#78746C]">
-            prdhub.app · 演示视频
+            产品演示 · 演示视频
           </div>
         </div>
 

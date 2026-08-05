@@ -1,9 +1,11 @@
-// 会话封装：读取 mock 会话 cookie（prd_session）。
+// 会话封装：读取 mock 会话 cookie（askbuddy_session）。
 // 真实模式改为 CloudBase Auth 校验（保持签名一致）。
 import { cookies } from "next/headers";
 import type { AuthUser } from "@/lib/cloudbase";
+import { SESSION_COOKIE } from "@/lib/auth/constants";
 
-export const SESSION_COOKIE = "prd_session";
+// 保持历史导入路径可用：既有代码从 "@/lib/auth/session" 取 SESSION_COOKIE。
+export { SESSION_COOKIE };
 
 /**
  * 获取当前登录用户。
@@ -16,7 +18,8 @@ export const SESSION_COOKIE = "prd_session";
  */
 export async function getSession(): Promise<AuthUser | null> {
   // 真实 CloudBase Auth 接入前，统一返回开发用户，使业务可持久化测试。
-  return { uid: "mock-user-001", email: "dev@prdflow.local" };
+  // ⚠️ uid 保持 "mock-user-001" 不变：现网存量数据均以该 uid 归属，改了会全部读不到。
+  return { uid: "mock-user-001", email: "dev@askbuddy.local" };
 }
 
 /** 仅用于需要 cookie 存在性校验的场景（如 middleware 已在校验 cookie 名）。 */

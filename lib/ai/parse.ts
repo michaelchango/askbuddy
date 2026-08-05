@@ -122,12 +122,12 @@ function extractInlineSections(reportText: string): {
       if (found) {
         try {
           const parsed = JSON.parse(found.jsonStr);
-          const arr = Array.isArray(parsed)
+          const arr: unknown[] = Array.isArray(parsed)
             ? parsed
             : Array.isArray((parsed as Record<string, unknown>).userStories)
-              ? (parsed as Record<string, unknown>).userStories!
+              ? ((parsed as Record<string, unknown>).userStories as unknown[])
               : Array.isArray((parsed as Record<string, unknown>).features)
-                ? (parsed as Record<string, unknown>).features!
+                ? ((parsed as Record<string, unknown>).features as unknown[])
                 : [];
           if (label === "用户故事") stories.push(...arr);
           else features.push(...arr);
@@ -251,7 +251,9 @@ export interface PrototypeParseResult {
 // 从模型输出中抽取自包含 HTML 原型。兼容：
 //  ① 直接给出完整 <!doctype html>…</html> 或 <html>…</html>
 //  ② 包裹在 ```html 代码围栏中
-// 并尽可能从内嵌 <script id="prd-flow-structure"> 解析页面结构。
+// 并尽可能从内嵌 <script id="askbuddy-structure"> 解析页面结构。
+// 兼容：改名前生成的历史原型内嵌的是旧 id "prd-flow-structure"，
+// 这里新旧双读，保证历史版本的页面结构仍可解析（不要删除旧 id 分支）。
 export function extractPrototype(text: string): PrototypeParseResult {
   let html = "";
   const docRe = /<!doctype\s+html[^>]*>[\s\S]*?<\/html>/i;
@@ -267,7 +269,7 @@ export function extractPrototype(text: string): PrototypeParseResult {
   let structure: PrototypeStructure | null = null;
   if (html) {
     const sm = html.match(
-      /<script[^>]*id=["']prd-flow-structure["'][^>]*>([\s\S]*?)<\/script>/i
+      /<script[^>]*id=["'](?:askbuddy-structure|prd-flow-structure)["'][^>]*>([\s\S]*?)<\/script>/i
     );
     if (sm) {
       try {

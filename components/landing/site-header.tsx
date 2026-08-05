@@ -20,8 +20,8 @@ export function SiteHeader() {
         {/* Logo */}
         <a href="/" className="flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-orange.png" alt="PRDHub" className="h-[44px] w-auto" />
-          <span className="text-[28px] font-bold text-[#111111]">PRDHub</span>
+          <img src="/logo-orange.png" alt="AskBuddy" className="h-[44px] w-auto" />
+          <span className="text-[28px] font-bold text-[#111111]">AskBuddy</span>
         </a>
 
         {/* PC 顶部菜单：紧贴 Logo（间距 54px）。设计稿相邻项左缘间距 72px，

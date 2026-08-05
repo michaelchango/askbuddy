@@ -1,0 +1,27 @@
+# 统一行尾处理：仓库内一律以 LF 存储，检出时按平台还原。
+# 避免「换个工具改一遍文件，整份 diff 全是行尾变更」的噪音。
+* text=auto
+
+# 明确以 LF 存储的文本类型
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.js    text eol=lf
+*.jsx   text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.css   text eol=lf
+*.sql   text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+
+# 二进制文件不做任何转换
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.svg   text eol=lf
+*.woff  binary
+*.woff2 binary
+*.pdf   binary

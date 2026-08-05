@@ -15,9 +15,9 @@ type Row = Record<string, unknown>;
 // ---------- Mock：进程内存表 ----------
 const g = globalThis as Record<string, unknown>;
 const memory: Record<string, Row[]> =
-  (g.__prdflow_memory as Record<string, Row[]> | undefined) ??
+  (g.__askbuddy_memory as Record<string, Row[]> | undefined) ??
   ({} as Record<string, Row[]>);
-if (!g.__prdflow_memory) g.__prdflow_memory = memory;
+if (!g.__askbuddy_memory) g.__askbuddy_memory = memory;
 
 function ensureTable(name: string): Row[] {
   if (!memory[name]) memory[name] = [];

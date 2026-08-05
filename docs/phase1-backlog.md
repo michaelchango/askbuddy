@@ -1,4 +1,4 @@
-# PrdFlow Phase 1 开发任务清单（MVP 第一阶段）
+# AskBuddy Phase 1 开发任务清单（MVP 第一阶段）
 
 > 目标：打通“项目/需求管理 → 对话式需求完善 → AI 原型生成与预览 → 版本快照”主链路。
 > 凭证策略：本阶段 CloudBase 凭证以 **mock** 实现（`USE_MOCK=true`），不依赖真实环境即可本地开发联调。

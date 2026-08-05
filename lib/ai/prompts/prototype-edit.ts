@@ -8,7 +8,7 @@ export const prototypeEditPrompt: PromptModule = {
 要求：
 1. 输出单个自包含 HTML（Tailwind CDN、原生 JS 交互、多页面切换等规则同生成时）。
 2. 保持未提及的部分不变，精准修改用户指定的元素 / 交互 / 文案 / 样式 / 布局。
-3. 可附带 <script type="application/json" id="prd-flow-structure"> 结构描述（如有变更）。
+3. 可附带 <script type="application/json" id="askbuddy-structure"> 结构描述（如有变更）。若原 HTML 中是旧 id "prd-flow-structure"，请一并改为 "askbuddy-structure"。
 4. **只输出 HTML 本身**，不要包裹代码围栏，不要解释。`,
   buildUser: (vars) => {
     const lines: string[] = [];

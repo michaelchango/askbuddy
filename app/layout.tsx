@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PRDHub — AI 驱动产品工作流协同平台",
+  title: "AskBuddy — AI 驱动产品工作流协同平台",
   description:
     "从对话完善需求，到调研、分析、原型生成、PRD 输出，全程 AI 协作。所有产物可直接被 AI 编码工具消费。",
   icons: {

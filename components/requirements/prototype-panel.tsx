@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { StepName } from "@/types";
 import useSWR from "swr";
 import { api } from "@/lib/api/client";
+import { EVT } from "@/lib/events";
 import { Button } from "@/components/ui/button";
 
 interface Version {
@@ -70,7 +71,7 @@ async function streamPost(
       } else if (ev && ev[1] === "gen_message") {
         // 服务端已落库，此处仅实时转发到对话面板回显
         window.dispatchEvent(
-          new CustomEvent("prdflow:gen-message", {
+          new CustomEvent(EVT.GEN_MESSAGE, {
             detail: { content: (payload as { content: string }).content, requirementId },
           })
         );

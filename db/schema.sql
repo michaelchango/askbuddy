@@ -1,5 +1,5 @@
 -- ============================================================
--- PrdFlow MVP Database Schema (MySQL 8.0+)
+-- AskBuddy MVP Database Schema (MySQL 8.0+)
 -- 腾讯云 CloudBase 云数据库 MySQL
 -- 约定：
 --   1. 存储引擎 InnoDB，字符集 utf8mb4，时间统一 UTC (DATETIME(3))

@@ -127,7 +127,7 @@ function EmptyState() {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/logo-orange.png"
-        alt="PRDHub"
+        alt="AskBuddy"
         className="h-[180px] w-auto"
       />
 

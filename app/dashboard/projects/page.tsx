@@ -41,7 +41,6 @@ function ProjectCard({ project, reqCount, updatedAt, onDeleted }: ProjectCardPro
       const d = await res.json();
       if (d.ok) {
         setConfirmOpen(false);
-        setMenuOpen(false);
         onDeleted();
       } else {
         setDeleteError(d.error ?? "删除失败，请稍后重试");

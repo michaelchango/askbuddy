@@ -404,14 +404,6 @@ export async function saveResearchAnalysis(
   const existing = await db.get<{ current_version: number }>("research_analysis", requirementId, "requirement_id");
   const nextVersion = (existing?.current_version ?? 0) + 1;
 
-  // [DEBUG] 版本递增诊断日志
-  console.log("[saveResearchAnalysis]", {
-    requirementId,
-    existingVer: existing?.current_version ?? 0,
-    nextVersion,
-    hasExisting: !!existing,
-  });
-
   // 插入版本历史（异常容错：版本历史写入失败不阻断主表更新）
   try {
     await db.insert("research_analysis_versions", {
@@ -440,11 +432,9 @@ export async function saveResearchAnalysis(
     updated_at: now,
   };
   if (existing) {
-    const updated = await db.update("research_analysis", requirementId, row as unknown as Record<string, unknown>, "requirement_id");
-    console.log("[saveResearchAnalysis] db.update 结果:", { requirementId, updated: !!updated, nextVersion });
+    await db.update("research_analysis", requirementId, row as unknown as Record<string, unknown>, "requirement_id");
   } else {
     await db.insert("research_analysis", row as unknown as Record<string, unknown>);
-    console.log("[saveResearchAnalysis] db.insert (首次创建):", { requirementId, nextVersion });
   }
   return nextVersion;
 }
@@ -456,14 +446,6 @@ export async function saveSolution(
   const now = new Date().toISOString();
   const existing = await db.get<{ current_version: number }>("solutions", requirementId, "requirement_id");
   const nextVersion = (existing?.current_version ?? 0) + 1;
-
-  // [DEBUG] 版本递增诊断日志
-  console.log("[saveSolution]", {
-    requirementId,
-    existingVer: existing?.current_version ?? 0,
-    nextVersion,
-    hasExisting: !!existing,
-  });
 
   // 插入版本历史（异常容错：版本历史写入失败不阻断主表更新）
   try {
@@ -488,11 +470,9 @@ export async function saveSolution(
     updated_at: now,
   };
   if (existing) {
-    const updated = await db.update("solutions", requirementId, row as unknown as Record<string, unknown>, "requirement_id");
-    console.log("[saveSolution] db.update 结果:", { requirementId, updated: !!updated, nextVersion });
+    await db.update("solutions", requirementId, row as unknown as Record<string, unknown>, "requirement_id");
   } else {
     await db.insert("solutions", row as unknown as Record<string, unknown>);
-    console.log("[saveSolution] db.insert (首次创建):", { requirementId, nextVersion });
   }
   return nextVersion;
 }
@@ -504,14 +484,6 @@ export async function savePRD(
   const now = new Date().toISOString();
   const existing = await db.get<{ current_version: number }>("prds", requirementId, "requirement_id");
   const nextVersion = (existing?.current_version ?? 0) + 1;
-
-  // [DEBUG] 版本递增诊断日志
-  console.log("[savePRD]", {
-    requirementId,
-    existingVer: existing?.current_version ?? 0,
-    nextVersion,
-    hasExisting: !!existing,
-  });
 
   // 插入版本历史（异常容错：版本历史写入失败不阻断主表更新）
   try {
@@ -538,11 +510,9 @@ export async function savePRD(
     updated_at: now,
   };
   if (existing) {
-    const updated = await db.update("prds", requirementId, prdRow as unknown as Record<string, unknown>, "requirement_id");
-    console.log("[savePRD] db.update 结果:", { requirementId, updated: !!updated, nextVersion });
+    await db.update("prds", requirementId, prdRow as unknown as Record<string, unknown>, "requirement_id");
   } else {
     await db.insert("prds", prdRow as unknown as Record<string, unknown>);
-    console.log("[savePRD] db.insert (首次创建):", { requirementId, nextVersion });
   }
   return nextVersion;
 }

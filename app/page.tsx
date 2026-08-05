@@ -64,10 +64,12 @@ const HERO_ICONS = [
   { icon: "/figma-pc/35.svg", label: "MCP 调用", sub: "AI 工具直接消费", tint: "#00D3F3" },
 ];
 
+// 注意：此处只列**已实现**的能力，未上线的必须显式标注「即将上线」，
+// 不得出现无对应实现的功能项（M0 已下线虚构的 CLI 宣传）。
 const DEV_FEATURES = [
-  { icon: "/figma-pc/17.svg", text: "标准 MCP 协议，开箱即用" },
-  { icon: "/figma-pc/17.svg", text: "CLI 支持 pull / export 命令" },
-  { icon: "/figma-pc/17.svg", text: "API Token 精细化权限管理" },
+  { icon: "/figma-pc/17.svg", text: "标准 MCP 协议，stdio 直连，开箱即用" },
+  { icon: "/figma-pc/17.svg", text: "4 个工具：需求 / 调研 / 原型 / PRD" },
+  { icon: "/figma-pc/17.svg", text: "API Token（PAT）管理，随时创建与撤销" },
   { icon: "/figma-pc/17.svg", text: "Webhook 通知外部系统（即将上线）" },
 ];
 
@@ -206,7 +208,7 @@ export default function HomePage() {
                   </span>
                 </h2>
                 <p className="mx-auto mt-6 max-w-[522px] text-center text-[18px] leading-relaxed text-[#78746C] lg:text-left">
-                  内置 MCP Server 和 CLI 工具，Cursor、Claude Code 等 AI 编程助手可以直接拉取需求卡片、原型结构和
+                  内置 MCP Server，Cursor、Claude Code 等 AI 编程助手可以直接拉取需求卡片、原型结构和
                   PRD，无需手动复制粘贴。
                 </p>
 
@@ -231,38 +233,51 @@ export default function HomePage() {
                     <img src="/figma-pc/20.svg" alt="" className="h-[18px] w-[18px]" />
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src="/figma-pc/21.svg" alt="" className="h-[18px] w-[18px]" />
-                    <span className="ml-2 font-mono text-[13.5px] text-[#9C9890]">Terminal</span>
+                    <span className="ml-2 font-mono text-[13.5px] text-[#9C9890]">
+                      .cursor/mcp.json
+                    </span>
                   </div>
+                  {/* 以下为真实可用的 MCP 接入配置，与 docs/mcp-guide.md 保持一致。 */}
                   <pre className="overflow-x-auto px-6 pb-6 font-mono text-[13.5px] leading-6">
-                    <span className="text-[#6B6B60]"># 安装 CLI 工具</span>
-                    {"\n"}
-                    <span className="text-[#00D3F3]">$ npm install -g prd-flow</span>
-                    {"\n\n"}
-                    <span className="text-[#6B6B60]"># 拉取需求到本地</span>
-                    {"\n"}
-                    <span className="text-[#00D3F3]">$ prd-flow pull req-001</span>
-                    {"\n"}
-                    <span className="text-[#00D492]">✓ 已拉取：用户评论与回复系统</span>
-                    {"\n"}
-                    <span className="text-[#00D492]">  → ./requirements/req-001.md</span>
-                    {"\n"}
-                    <span className="text-[#00D492]">  → ./prototypes/req-001/</span>
-                    {"\n\n"}
-                    <span className="text-[#6B6B60]"># MCP Server 配置（.cursor/mcp.json）</span>
+                    <span className="text-[#6B6B60]">
+                      {"# Cursor / Claude Desktop 均使用同一份配置"}
+                    </span>
                     {"\n"}
                     <span className="text-[#FFB900]">{"{"}</span>
                     {"\n"}
-                    <span className="text-[#FFB900]">  {"\"mcpServers\""}: {"{"}</span>
+                    <span className="text-[#FFB900]">{'  "mcpServers": {'}</span>
                     {"\n"}
-                    <span className="text-[#FFB900]">    {"\"prdflow\""}: {"{"}</span>
+                    <span className="text-[#FFB900]">{'    "askbuddy": {'}</span>
                     {"\n"}
-                    <span className="text-[#FFB900]">      {"\"command\": \"prd-flow mcp\""}</span>
+                    <span className="text-[#00D3F3]">{'      "command": "npx",'}</span>
                     {"\n"}
-                    <span className="text-[#FFB900]">    {"}"}</span>
+                    <span className="text-[#00D3F3]">
+                      {'      "args": ["tsx", "<AskBuddy 仓库>/mcp/server.ts"],'}
+                    </span>
                     {"\n"}
-                    <span className="text-[#FFB900]">  {"}"}</span>
+                    <span className="text-[#00D3F3]">{'      "env": {'}</span>
+                    {"\n"}
+                    <span className="text-[#00D492]">
+                      {'        "ASKBUDDY_BASE_URL": "http://localhost:3000",'}
+                    </span>
+                    {"\n"}
+                    <span className="text-[#00D492]">
+                      {'        "ASKBUDDY_TOKEN": "<你的 PAT>"'}
+                    </span>
+                    {"\n"}
+                    <span className="text-[#00D3F3]">{"      }"}</span>
+                    {"\n"}
+                    <span className="text-[#FFB900]">{"    }"}</span>
+                    {"\n"}
+                    <span className="text-[#FFB900]">{"  }"}</span>
                     {"\n"}
                     <span className="text-[#FFB900]">{"}"}</span>
+                    {"\n\n"}
+                    <span className="text-[#6B6B60]">{"# 连接后可调用 4 个工具"}</span>
+                    {"\n"}
+                    <span className="text-[#9C9890]">
+                      {"# requirement_get / research / prototype / prd"}
+                    </span>
                   </pre>
                 </div>
               </div>
@@ -308,8 +323,8 @@ export default function HomePage() {
         <div className="mx-auto flex max-w-[1130px] flex-col items-center gap-4 px-5 sm:flex-row sm:justify-between sm:px-7">
           <div className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo-orange.png" alt="PRDHub" className="h-[28px] w-auto" />
-            <span className="text-[15.75px] font-bold text-[#111111]">PRDHub</span>
+            <img src="/logo-orange.png" alt="AskBuddy" className="h-[28px] w-auto" />
+            <span className="text-[15.75px] font-bold text-[#111111]">AskBuddy</span>
             <span className="text-[15.75px] text-[#78746C]">© 2026</span>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[15.75px] text-[#78746C]">

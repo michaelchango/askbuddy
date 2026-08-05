@@ -6,9 +6,25 @@ import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Download, ArrowLeft, P
 import { api } from "@/lib/api/client";
 import { extractResearchAnalysis } from "@/lib/ai/parse";
 import { buildResearchAnalysisMarkdown } from "@/lib/render/research-analysis";
-import { Markdown } from "./markdown";
+import MarkdownRenderer from "./markdown-renderer";
 import { ICONS } from "./output-sidebar";
 import type { OutputContent, OutputType } from "@/lib/services/outputs";
+
+// 原 components/requirements/markdown.tsx 只是给 MarkdownRenderer 套一层排版容器，
+// 且仅本文件使用，M0 已内联至此并删除该中转文件（少一层无意义的间接跳转）。
+function Markdown({
+  content,
+  disableMermaid = false,
+}: {
+  content: string;
+  disableMermaid?: boolean;
+}) {
+  return (
+    <div className="text-[14px] text-slate-700">
+      <MarkdownRenderer content={content} disableMermaid={disableMermaid} />
+    </div>
+  );
+}
 
 const CARD_FIELDS: { key: string; label: string }[] = [
   { key: "background", label: "背景" },

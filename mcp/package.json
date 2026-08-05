@@ -1,11 +1,11 @@
 {
-  "name": "prdflow-mcp",
+  "name": "@askbuddy/mcp-server",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "PrdFlow MCP Server — 暴露需求/调研/原型/PRD 给 AI 编码工具直接消费",
+  "description": "AskBuddy MCP Server — 暴露需求/调研/原型/PRD 给 AI 编码工具直接消费",
   "bin": {
-    "prdflow-mcp": "server.ts"
+    "askbuddy-mcp": "server.ts"
   },
   "scripts": {
     "start": "tsx server.ts",

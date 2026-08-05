@@ -18,19 +18,22 @@ const EXPIRY_OPTIONS = [
 const MCP_GUIDE_TABS = [
   { id: "claude", label: "Claude Desktop" },
   { id: "cursor", label: "Cursor" },
-  { id: "terminal", label: "终端/CLI" },
+  { id: "terminal", label: "终端（手动启动）" },
 ] as const;
+
+// MCP Server 入口的占位路径。用户需替换为本机上 AskBuddy 仓库的绝对路径。
+const MCP_ENTRY_PLACEHOLDER = "/absolute/path/to/AskBuddy/mcp/server.ts";
 
 function getConfigJson(tab: string, tokenPlaceholder: string) {
   const base = {
     command: "npx",
-    args: ["tsx", "/path/to/PRDTube/mcp/server.ts"],
+    args: ["tsx", MCP_ENTRY_PLACEHOLDER],
     env: {
-      PRDFLOW_BASE_URL: "http://localhost:3000",
-      PRDFLOW_TOKEN: tokenPlaceholder,
+      ASKBUDDY_BASE_URL: "http://localhost:3000",
+      ASKBUDDY_TOKEN: tokenPlaceholder,
     },
   };
-  const serverBlock = JSON.stringify({ prdflow: base }, null, 2);
+  const serverBlock = JSON.stringify({ askbuddy: base }, null, 2);
   switch (tab) {
     case "claude":
       return `// macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
@@ -45,11 +48,11 @@ function getConfigJson(tab: string, tokenPlaceholder: string) {
 }`;
     case "terminal":
       return `# 设置环境变量
-export PRDFLOW_BASE_URL=http://localhost:3000
-export PRDFLOW_TOKEN=${tokenPlaceholder}
+export ASKBUDDY_BASE_URL=http://localhost:3000
+export ASKBUDDY_TOKEN=${tokenPlaceholder}
 
 # 启动 MCP Server
-npx tsx /path/to/PRDTube/mcp/server.ts`;
+npx tsx ${MCP_ENTRY_PLACEHOLDER}`;
     default:
       return "";
   }
@@ -429,7 +432,7 @@ export default function TokenManagementPage() {
         {guideOpen && (
           <div className="border-t border-[#1111111a] px-6 pb-6">
             <p className="mt-4 text-[13px] text-[#6B7280]">
-              创建 Token 后，将其配置到 MCP 客户端中，AI 工具即可读取 PRDTube
+              创建 Token 后，将其配置到 MCP 客户端中，AI 工具即可读取 AskBuddy
               的需求、调研、原型和 PRD 文档。
             </p>
 
@@ -492,23 +495,29 @@ export default function TokenManagementPage() {
               <div className="mt-2 space-y-1.5 text-[13px] text-[#374151]">
                 <p>
                   <code className="rounded bg-[#E5E7EB] px-1.5 py-0.5 text-[12px] font-mono text-[#111111]">
-                    PRDFLOW_TOKEN
+                    ASKBUDDY_TOKEN
                   </code>
                   ：必填，你在上方创建的 PAT 令牌
                 </p>
                 <p>
                   <code className="rounded bg-[#E5E7EB] px-1.5 py-0.5 text-[12px] font-mono text-[#111111]">
-                    PRDFLOW_BASE_URL
+                    ASKBUDDY_BASE_URL
                   </code>
-                  ：PRDTube 后端地址，本地默认为
+                  ：AskBuddy 后端地址，本地默认为
                   <code className="rounded bg-[#E5E7EB] px-1.5 py-0.5 text-[12px] font-mono text-[#111111]">
                     http://localhost:3000
                   </code>
                 </p>
               </div>
               <p className="mt-2 text-[12px] text-[#F59E0B]">
-                提示：将代码块中的 YOUR_PAT_HERE 替换为你刚刚生成的 Token，将路径替换为实际的 MCP
-                Server 路径。
+                提示：将代码块中的 YOUR_PAT_HERE 替换为你刚刚生成的 Token，将
+                <code className="mx-1 rounded bg-[#FEF3C7] px-1 py-0.5 font-mono text-[11px]">
+                  /absolute/path/to/AskBuddy
+                </code>
+                替换为本机上 AskBuddy 仓库的实际绝对路径。
+              </p>
+              <p className="mt-1.5 text-[12px] text-[#9CA3AF]">
+                兼容：历史变量 PRDFLOW_TOKEN / PRDFLOW_BASE_URL 仍可用（新变量优先），建议尽快迁移。
               </p>
             </div>
           </div>

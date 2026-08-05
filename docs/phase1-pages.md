@@ -20,7 +20,7 @@
 | `/dashboard/projects/[projectId]` | 项目详情 / 需求列表容器 | T5 |
 | `/dashboard/projects/[projectId]/requirements/new` | 新建需求（对话入口/手动） | T5 |
 | `/dashboard/requirements/[requirementId]` | 需求工作区（Tab：对话/调研/分析/方案/原型/PRD） | T5–T7 |
-| `/dashboard/settings/tokens` | API Token 管理 | T8 |
+| `/dashboard/tokens` | API Token 管理 | T8 |
 
 ## 2. 组件拆分
 
@@ -56,7 +56,7 @@
 
 - **读**：页面用 Server Component 直接经 `lib/services/*` 读 `lib/db`（同一进程，最快）；需要实时刷新的列表用客户端 `swr` 调 API。
 - **写（变更）**：一律走 API Route（同时作为 MCP/CLI 对外契约），客户端 `fetch` 后 `router.refresh()` 或 `mutate()`。
-- **会话**：`lib/auth/session.getSession()` 读 `prd_session` cookie；`middleware.ts` 守卫 `/dashboard`。
+- **会话**：`lib/auth/session.getSession()` 读 `askbuddy_session` cookie（常量定义在 `lib/auth/constants.ts`，middleware 与服务端共用）；`middleware.ts` 守卫 `/dashboard`。
 
 ## 5. 开发顺序对应 backlog
 T1 脚手架 ✅ → T2 数据层 ✅ → **T3 认证（本文档已实现）** → **T4 项目管理（已实现）** → T5 需求管理 → T6 对话完善 → T7 原型 → T8 Token。

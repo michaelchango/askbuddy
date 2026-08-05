@@ -143,8 +143,8 @@ export function ProjectShell({
           <div className="flex items-center gap-3">
             <Link href="/dashboard" className="flex items-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo-orange.png" alt="PRDHub" className="h-[40px] w-auto" />
-              <span className="text-[22px] font-bold text-[#111111]">PRDHub</span>
+              <img src="/logo-orange.png" alt="AskBuddy" className="h-[40px] w-auto" />
+              <span className="text-[22px] font-bold text-[#111111]">AskBuddy</span>
             </Link>
             <span className="h-[22px] w-px bg-[#1111111a]" />
 

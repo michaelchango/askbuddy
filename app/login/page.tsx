@@ -69,8 +69,8 @@ function LoginInner() {
       <div className="hidden flex-col bg-[#1A1915] p-[54px] lg:flex">
         <div className="flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-orange.png" alt="PRDHub" className="h-[44px] w-auto" />
-          <span className="text-[28px] font-bold text-white">PRDHub</span>
+          <img src="/logo-orange.png" alt="AskBuddy" className="h-[44px] w-auto" />
+          <span className="text-[28px] font-bold text-white">AskBuddy</span>
         </div>
 
         <div className="mt-[106px]">
@@ -99,7 +99,7 @@ function LoginInner() {
         </div>
 
         <p className="mt-auto text-[13.5px] text-[#6B6B60]">
-          © 2026 PRDHub · 让产品工作更高效
+          © 2026 AskBuddy · 让产品工作更高效
         </p>
       </div>
 
@@ -108,8 +108,8 @@ function LoginInner() {
         <div className="mx-auto flex w-full max-w-[432px] items-center justify-between">
           <Link href="/" className="flex items-center gap-2 lg:hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo-orange.png" alt="PRDHub" className="h-[40px] w-auto" />
-            <span className="text-[22px] font-bold text-[#111111]">PRDHub</span>
+            <img src="/logo-orange.png" alt="AskBuddy" className="h-[40px] w-auto" />
+            <span className="text-[22px] font-bold text-[#111111]">AskBuddy</span>
           </Link>
           <Link
             href="/"
@@ -126,7 +126,7 @@ function LoginInner() {
             {isRegister ? "创建账号" : "欢迎回来"}
           </h2>
           <p className="mt-[4.5px] text-[15.75px] text-[#78746C]">
-            {isRegister ? "免费开始使用 PRDHub" : "登录以继续使用 PRDHub"}
+            {isRegister ? "免费开始使用 AskBuddy" : "登录以继续使用 AskBuddy"}
           </p>
 
           {/* 登录 / 注册 切换 */}

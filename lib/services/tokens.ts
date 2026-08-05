@@ -3,7 +3,10 @@ import crypto from "crypto";
 import { db } from "@/lib/db";
 
 // 哈希盐：让 token 哈希不可逆，且不同部署间不通用。可用 PAT_SALT 环境变量覆盖。
-const TOKEN_SALT = process.env.PAT_SALT || "prdflow-pat-v1";
+// ⚠️ 存量部署（改名前签发过 PAT 的环境）必须在 .env 中显式设置
+//    PAT_SALT=prdflow-pat-v1，否则历史 Token 的哈希将全部失配、鉴权直接失败。
+//    新部署可不设，走下面的默认值即可。
+const TOKEN_SALT = process.env.PAT_SALT || "askbuddy-pat-v1";
 
 function hashToken(s: string): string {
   return crypto.createHash("sha256").update(s + TOKEN_SALT).digest("hex");

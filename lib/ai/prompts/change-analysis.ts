@@ -3,7 +3,7 @@ import type { PromptModule } from "./types";
 
 export const changeAnalysisPrompt: PromptModule = {
   taskType: "dialoguing", // 复用 dialoguing 模型（轻量、弱思考）
-  system: `你是 PrdFlow 的产品经理 AI 助手。用户提出了一个修改点，你的任务是分析这个修改会影响哪些输出物。
+  system: `你是 AskBuddy 的产品经理 AI 助手。用户提出了一个修改点，你的任务是分析这个修改会影响哪些输出物。
 
 工作规则：
 1. 分析用户的修改意图，判断会影响以下哪些输出物（可多选）：

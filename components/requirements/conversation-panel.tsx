@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import useSWR, { mutate } from "swr";
 import { cn } from "@/lib/utils";
+import { EVT } from "@/lib/events";
 import { ArrowUp, Link2, Plus, User, X, Copy, Check } from "lucide-react";
 import { ReferencePanel, type PickedReference } from "./reference-panel";
 import type { OutputMeta, OutputType } from "@/lib/services/outputs";
@@ -258,7 +259,7 @@ export function ConversationPanel({
                   auto?: boolean;
                 };
                 window.dispatchEvent(
-                  new CustomEvent("prdflow:proceed-prompt", {
+                  new CustomEvent(EVT.PROCEED_PROMPT, {
                     detail: {
                       requirementId: currentId,
                       step: payload.step,
@@ -283,7 +284,7 @@ export function ConversationPanel({
                 };
                 // 通知 shell 执行变更更新
                 window.dispatchEvent(
-                  new CustomEvent("prdflow:change-update", {
+                  new CustomEvent(EVT.CHANGE_UPDATE, {
                     detail: {
                       requirementId: currentId,
                       affectedOutputs: payload.affectedOutputs,
@@ -347,8 +348,8 @@ export function ConversationPanel({
         },
       ]);
     };
-    window.addEventListener("prdflow:gen-message", handler);
-    return () => window.removeEventListener("prdflow:gen-message", handler);
+    window.addEventListener(EVT.GEN_MESSAGE, handler);
+    return () => window.removeEventListener(EVT.GEN_MESSAGE, handler);
   }, [rid]);
 
   // 监听【返回修改】→ 在输入框填入默认修改文案并聚焦，供用户补充修改点
@@ -359,8 +360,8 @@ export function ConversationPanel({
       // 延迟聚焦，确保输入框已更新
       setTimeout(() => taRef.current?.focus(), 0);
     };
-    window.addEventListener("prdflow:request-modify", handler);
-    return () => window.removeEventListener("prdflow:request-modify", handler);
+    window.addEventListener(EVT.REQUEST_MODIFY, handler);
+    return () => window.removeEventListener(EVT.REQUEST_MODIFY, handler);
   }, []);
 
   // 监听变更全部完成事件 → 添加总结消息
@@ -391,8 +392,8 @@ export function ConversationPanel({
         },
       ]);
     };
-    window.addEventListener("prdflow:change-complete", handler);
-    return () => window.removeEventListener("prdflow:change-complete", handler);
+    window.addEventListener(EVT.CHANGE_COMPLETE, handler);
+    return () => window.removeEventListener(EVT.CHANGE_COMPLETE, handler);
   }, [rid]);
 
   return (
@@ -406,7 +407,7 @@ export function ConversationPanel({
             {m.role === "assistant" ? (
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/logo-orange.png" alt="PRDHub" className="h-7 w-7 object-contain" />
+                <img src="/logo-orange.png" alt="AskBuddy" className="h-7 w-7 object-contain" />
               </span>
             ) : (
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white">
@@ -471,7 +472,7 @@ export function ConversationPanel({
           <div className="flex items-start gap-3">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/logo-orange.png" alt="PRDHub" className="h-7 w-7 object-contain" />
+                <img src="/logo-orange.png" alt="AskBuddy" className="h-7 w-7 object-contain" />
             </span>
             <div className="flex min-w-0 max-w-[80%] flex-col items-start">
               <span className="inline-block whitespace-pre-wrap rounded-bl-[18px] rounded-br-[18px] rounded-tl-[5px] rounded-tr-[18px] bg-[#F9F8F5] px-4 py-2.5 text-[15.75px] leading-relaxed text-[#111111] ring-1 ring-[#1111111a]">

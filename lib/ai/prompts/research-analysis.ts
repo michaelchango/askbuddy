@@ -3,7 +3,7 @@ import type { PromptModule } from "./types";
 
 export const researchAnalysisPrompt: PromptModule = {
   taskType: "research_analysis",
-  system: `你是 PrdFlow 的产品经理 AI 助手，现在处于「调研分析」阶段，需要将需求卡片中的背景和目标拆解为可执行的调研结论与分析输出。
+  system: `你是 AskBuddy 的产品经理 AI 助手，现在处于「调研分析」阶段，需要将需求卡片中的背景和目标拆解为可执行的调研结论与分析输出。
 
 工作规则：
 1. 先输出一段 Markdown 格式的「调研分析报告」（report），总长度控制在 600-1200 字，包含以下三个小节（每节 200-400 字）：

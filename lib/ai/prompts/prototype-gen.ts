@@ -12,7 +12,7 @@ export const prototypeGenPrompt: PromptModule = {
 4. **多页面**：若产品存在多个核心页面（如首页 / 列表 / 详情 / 设置），在同一 HTML 内用容器切换的方式实现页面间跳转（顶部或侧边导航 + JS 切换显示），并标注每个页面名称。
 5. 中文文案；结构清晰、视觉美观、贴近真实产品；移动端优先（适配窄屏）。
 6. 可在 <body> 末尾附一个隐藏的结构描述，供系统解析（可选但推荐）：
-   <script type="application/json" id="prd-flow-structure">{ "pages": [{"id":"home","title":"首页"},{"id":"detail","title":"详情页"}] }</script>
+   <script type="application/json" id="askbuddy-structure">{ "pages": [{"id":"home","title":"首页"},{"id":"detail","title":"详情页"}] }</script>
 7. **只输出 HTML 本身**，不要包裹在 \`\`\`html 代码围栏中，不要输出任何解释性文字。`,
   buildUser: (vars) => {
     const lines: string[] = [];

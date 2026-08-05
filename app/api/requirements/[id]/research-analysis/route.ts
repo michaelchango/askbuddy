@@ -17,9 +17,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const body = await req.json().catch(() => ({}));
   const mode: "normal" | "change" = body?.mode === "change" ? "change" : "normal";
 
-  // [TRACE] 路由入口诊断日志
-  console.log("[route|research_analysis] POST 入口", { id: params.id, mode, changeNote: body?.changeNote });
-
   // 进入调研分析即代表「需求确认」已完成（change 模式下 dialoguing 已是 done，幂等）
   if (mode === "normal") {
     await markStepDone(params.id, "dialoguing").catch(() => {});
@@ -42,26 +39,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         const stepsEarly = await getSteps(params.id);
         controller.enqueue(encoder.encode(`event: step_update\ndata: ${JSON.stringify(stepsEarly)}\n\n`));
 
-        console.log("[trace|research_analysis] 开始读取 SSE 流");
-
         const reader = stream.getReader();
-        let chunkCount = 0;
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
           full += value;
-          chunkCount++;
-          if (chunkCount <= 3 || chunkCount % 50 === 0) {
-            console.log("[trace|research_analysis] SSE chunk", { chunkCount, length: value.length, fullLen: full.length });
-          }
           controller.enqueue(encoder.encode(`event: delta\ndata: ${JSON.stringify(full)}\n\n`));
         }
 
-        console.log("[trace|research_analysis] SSE 流读取完成", { chunkCount, fullLen: full.length });
-
         const result = await finalizeStep("research_analysis", params.id, full);
         const version = (result.result as { version?: number })?.version;
-        console.log("[trace|research_analysis] finalizeStep 完成", { version });
 
         // 将版本号同步写回 requirement_steps.output_version（UI 依赖此字段显示版本）
         if (version != null) {
