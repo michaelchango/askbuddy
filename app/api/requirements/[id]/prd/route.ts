@@ -1,0 +1,123 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth/session";
+import { runGeneration, finalizeStep } from "@/lib/ai/orchestrator";
+import { getSteps, markStepDone, markStepInProgress, setStepState, nextStepOf, isFrontierStep } from "@/lib/services/steps";
+import { addMessage } from "@/lib/services/conversations";
+import { touchRequirement } from "@/lib/services/requirements";
+import { db } from "@/lib/db";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// 生成「需求文档」流式接口
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const user = await getSession();
+  if (!user) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+
+  const body = await req.json().catch(() => ({}));
+  const mode: "normal" | "change" = body?.mode === "change" ? "change" : "normal";
+
+  // 需求文档进入【进行中】
+  await markStepInProgress(params.id, "prd_writing").catch(() => {});
+
+  const stream = await runGeneration("prd_writing", params.id, {
+    message: body?.message ?? "",
+    // 变更模式：携带变更点，生成管线切换为"基于现有文档精准修改"
+    changeNote: mode === "change" ? (body?.changeNote ?? "") : "",
+  });
+  const encoder = new TextEncoder();
+  let full = "";
+
+  const sse = new ReadableStream({
+    async start(controller) {
+      try {
+        const stepsEarly = await getSteps(params.id);
+        controller.enqueue(encoder.encode(`event: step_update\ndata: ${JSON.stringify(stepsEarly)}\n\n`));
+
+        const reader = stream.getReader();
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          full += value;
+          controller.enqueue(encoder.encode(`event: delta\ndata: ${JSON.stringify(full)}\n\n`));
+        }
+
+        const result = await finalizeStep("prd_writing", params.id, full);
+        const version = (result.result as { version?: number })?.version;
+
+        // 将版本号同步写回 requirement_steps.output_version（UI 依赖此字段显示版本）
+        if (version != null) {
+          await db.updateWhere("requirement_steps", { requirement_id: params.id, step: "prd_writing" }, { output_version: version }).catch(() => {});
+        }
+
+        // 生成完成后不再自动推进，当前节点保持【进行中】，仅打开确认闸门
+        const nextStep = nextStepOf("prd_writing"); // null（最后一步）
+        const genMessage =
+          mode === "normal"
+            ? `✅ 需求文档已生成，请在上方的阶段栏确认。`
+            : `✅ 需求文档已更新。`;
+
+        // 落库合成消息，确保退出重进会话后仍能回显
+        await addMessage(params.id, "assistant", genMessage).catch(() => {});
+        // 生成（或更新）输出物即视为需求的一次更新，刷新「最近更新」时间
+        await touchRequirement(params.id).catch(() => {});
+
+        // 变更模式：判断当前是否为前沿阶段，前沿需重开确认闸门，上游自动完成
+        // 注：prd_writing 为末阶段，无下游，永远是 frontier
+        let isFrontier = false;
+        if (mode === "normal") {
+          // 保持【进行中】，写入版本号并打开确认闸门
+          await setStepState(params.id, "prd_writing", "in_progress", {
+            outputVersion: version,
+            awaitingConfirm: true,
+          }).catch(() => {});
+        } else {
+          const allSteps = await getSteps(params.id);
+          isFrontier = isFrontierStep(allSteps, "prd_writing");
+          if (isFrontier) {
+            await setStepState(params.id, "prd_writing", "in_progress", {
+              outputVersion: version,
+              awaitingConfirm: true,
+            }).catch(() => {});
+          } else {
+            await markStepDone(params.id, "prd_writing", version).catch(() => {});
+          }
+        }
+
+        const steps = await getSteps(params.id);
+        controller.enqueue(encoder.encode(`event: step_update\ndata: ${JSON.stringify(steps)}\n\n`));
+        controller.enqueue(encoder.encode(`event: gen_message\ndata: ${JSON.stringify({ content: genMessage })}\n\n`));
+        // 下发确认闸门：normal 模式始终下发；change 模式仅前沿阶段下发
+        if (mode === "normal" || isFrontier) {
+          controller.enqueue(
+            encoder.encode(
+              `event: proceed_prompt\ndata: ${JSON.stringify({
+                step: "prd_writing",
+                nextStep,
+                canSkip: false,
+                message: mode === "normal"
+                  ? "需求文档已生成，请确认。"
+                  : "需求文档已更新，请在上方阶段栏确认。",
+                version,
+              })}\n\n`
+            )
+          );
+        }
+        controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ type: result.type })}\n\n`));
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ message })}\n\n`));
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(sse, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+    },
+  });
+}

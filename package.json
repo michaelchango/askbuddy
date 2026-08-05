@@ -1,0 +1,45 @@
+{
+  "name": "prdflow",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "mcp": "tsx mcp/server.ts"
+  },
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.18.3",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@hookform/resolvers": "^3.9.0",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.408.0",
+    "mermaid": "^11.16.0",
+    "mysql2": "^3.10.0",
+    "next": "^14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "^7.52.1",
+    "react-markdown": "^9.1.0",
+    "remark-gfm": "^4.0.1",
+    "swr": "^2.2.5",
+    "tailwind-merge": "^2.4.0",
+    "tailwindcss-animate": "^1.0.7",
+    "ws": "^8.21.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "tsx": "^4.19.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.19",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.5",
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.4",
+    "typescript": "^5.4.5"
+  }
+}

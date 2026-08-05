@@ -1,0 +1,31 @@
+# ---- AskBuddy ----
+# 依赖与构建产物
+node_modules/
+.next/
+out/
+build/
+
+# 环境变量：.env.local 含真实 CLOUDBASE_SECRET，严禁入库
+.env.local
+.env*.local
+
+# TypeScript / 构建缓存
+*.tsbuildinfo
+
+# 本地运行日志
+dev_server.log
+dev_server.err
+tsc_check.log
+npm-debug.log*
+yarn-error.log*
+
+# AI 会话产物（非工程资产）
+.codebuddy/
+.workbuddy/
+
+# 编辑器与系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
