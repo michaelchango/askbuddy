@@ -61,8 +61,8 @@ CREATE TABLE requirements (
   id              TEXT        NOT NULL,
   project_id      TEXT        NOT NULL,
   title           TEXT        NOT NULL,
-  title_source    TEXT        NULL              -- 代码 requirements.ts:49 写入，原 schema 缺失
-                    CHECK (title_source IS NULL OR title_source IN ('manual', 'ai')),
+  title_source    TEXT        NULL              -- 代码写入 'manual'(用户改名)/'auto'(自动概括)；类型 TitleSource="auto"|"manual"|null（lib/services/requirements.ts:264/278）
+                    CONSTRAINT ck_req_title_source CHECK (title_source IS NULL OR title_source IN ('manual', 'auto')),
   -- 注意：不设 status 列。需求阶段是【派生值】，唯一事实源是 requirement_steps.state。
   -- 派生逻辑见 lib/stage.ts:deriveRequirementStatus。
   -- 历史上这里有一个 ENUM 列，但它自创建后从不更新（写死 'dialoguing'），已于 M1 移除。

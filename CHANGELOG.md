@@ -13,6 +13,17 @@
 - **验收**：`npm run db:check` 契约 16/16/16；`npm run test:parity DB_PARITY_PG=true` 真实 CloudBase **82/82**（含 L3）；真 pgvector `<=>` 检索端到端通过；`next build` 全绿。
 - **配置**：`.env.local` 置 `DB_BACKEND=cloudbase`；`DATABASE_URL` 留空（cloudbase 路径不需要）。`tsconfig.json` 排除探索用 `scripts/probe-*.ts` 以免拖慢构建类型检查。
 
+## M1.1 — 热修：requirements.title_source CHECK 约束值域漂移 (2026-08-06)
+
+- **现象**：运行时 `UPDATE requirements SET title_source='auto' ...` 触发 `DATABASE_23514`，违反 `requirements_title_source_check`。
+- **根因**：schema CHECK 允许 `('manual','ai')`，但代码契约 `TitleSource = "auto" | "manual" | null`（`types/index.ts:64`）实际写入 `'auto'`、`'ai'` 从未使用 —— 属 schema 落后于代码的漂移。
+- **修复（三处契约源一致）**：
+  - `db/drizzle/schema.ts` `ck_req_title_source`：`IN ('manual','ai')` → `IN ('manual','auto')`（migrate.ts 从 schema.ts 程序化读 CHECK，自动跟随）。
+  - `db/schema.sql`：`title_source` 改为显式命名 `CONSTRAINT ck_req_title_source CHECK (... IN ('manual','auto'))`，与 drizzle 命名对齐。
+  - **线上库**：经 B 通道执行 `scripts/db-fix-title-source-check.ts`，DROP 旧 `requirements_title_source_check`、ADD `ck_req_title_source`（值域 `'manual','auto'`）。已验证线上约束定义生效。
+- **附带扫描**：对其余 CHECK（`ck_projects_status`/`ck_conv_role`/`ck_req_step`/`ck_req_state`/`ck_req_completion`/`ck_share_type`）与代码 enum 逐一比对，均无漂移。
+- **新增脚本**：`scripts/db-fix-title-source-check.ts`（热修）、`scripts/verify-title-source-check.ts`（校验）。
+
 ## M0 — 命名统一 AskBuddy 化 + 技术债清理 (2026-08-05)
 
 - **全站命名收敛**：`prdflow` / `PRDTube` / `prd_session` → `askbuddy` / `AskBuddy` / `askbuddy_session`

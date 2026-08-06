@@ -93,7 +93,7 @@ export const requirements = pgTable(
       .where(sql`archived_at IS NULL`),
     ckTitleSource: check(
       "ck_req_title_source",
-      sql`${t.titleSource} IS NULL OR ${t.titleSource} IN ('manual', 'ai')`
+      sql`${t.titleSource} IS NULL OR ${t.titleSource} IN ('manual', 'auto')`
     ),
     ckPriority: check(
       "ck_req_priority",
