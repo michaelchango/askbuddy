@@ -24,6 +24,18 @@
 - **附带扫描**：对其余 CHECK（`ck_projects_status`/`ck_conv_role`/`ck_req_step`/`ck_req_state`/`ck_req_completion`/`ck_share_type`）与代码 enum 逐一比对，均无漂移。
 - **新增脚本**：`scripts/db-fix-title-source-check.ts`（热修）、`scripts/verify-title-source-check.ts`（校验）。
 
+## M1.2 — 修复：对话中需求卡片（背景/目标用户/核心痛点等）不被记录 (2026-08-06)
+
+- **现象**：在对话里提出需求后，需求卡片的 background / targetUsers / painPoints / scope / nonFunctional / constraints 大多为空，没有随对话逐步沉淀。
+- **根因**：卡片唯一可靠的落库路径是 `finalizeDialogue → extractReplyAndCard → mergeRequirementCard`，而 `extractReplyAndCard` **完全依赖模型在每轮回复末尾吐出 ```` ```json ```` 卡片块**。对话用的是轻量模型 `hy3`，让其「自然语言回复 + 卡片 JSON + [STEP_COMPLETE]/[COMPLEXITY] 标记」同条输出失败率高——漏写/写错 JSON 块时正则不命中，合并跳过空串，卡片恒空。本应兜底的 `lib/ai/prompts/extract-card.ts`（`extractCardPrompt`，整段对话→卡片）此前**从未被接线**。
+- **修复（解耦「抽卡片」与「模型夹带 JSON」）**：
+  - `lib/ai/orchestrator.ts` 新增 `extractCard(requirementId)`：读整段对话 → 用 `extractCardPrompt` + `callAI`（dialoguing 模型，非流式）→ `extractReplyAndCard` 解析；返回部分卡片，空则 `null`。失败兜底 `null`，不阻断对话。
+  - `lib/services/requirements.ts` 新增 `extractCardFromConversation(id)`：`extractCard` → `mergeRequirementCard`（增量合并：只填非空、覆盖已有值，支持逐步完善与对话中纠正）；并重写 `generateCard`（原「原文前 500 字 + 其余『待补充』」的退化实现改为走 AI 抽取）。
+  - `app/api/requirements/[id]/conversation/route.ts`：正常对话流程每轮在落库 assistant 回复后，用 `extractCardFromConversation` 渐进抽取，**仅当合并后字段 < 4 才触发一次额外 AI 调用**（控制成本）；以合并后的 `liveCard` 发 `event: card` 并据其计算需求确认 `stepReady`，不再依赖模型是否夹带 JSON。
+  - `extractCardPrompt.buildUser` 入参补 `message: ""` 满足共享 `PromptVars` 类型。
+- **回归测试** `__tests__/card-capture.test.ts`：`extractReplyAndCard` 分离/空块、以及 `mergeRequirementCard` 增量合并（保留/新增/覆盖纠正）三用例全绿。
+- **验收**：`USE_MOCK=true npm run build` 全绿；`npx tsx --test __tests__/card-capture.test.ts` **3/3** 通过。
+
 ## M0 — 命名统一 AskBuddy 化 + 技术债清理 (2026-08-05)
 
 - **全站命名收敛**：`prdflow` / `PRDTube` / `prd_session` → `askbuddy` / `AskBuddy` / `askbuddy_session`

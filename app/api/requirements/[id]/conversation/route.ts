@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { listConversations, addMessage } from "@/lib/services/conversations";
 import { streamDialogue, finalizeDialogue } from "@/lib/ai/orchestrator";
-import { maybeAutoTitle, touchRequirement, getRequirement } from "@/lib/services/requirements";
+import { maybeAutoTitle, touchRequirement, getRequirement, extractCardFromConversation, EMPTY_CARD } from "@/lib/services/requirements";
 import { applyCardChange } from "@/lib/services/card";
 import {
   getSteps,
@@ -13,7 +13,7 @@ import {
 } from "@/lib/services/steps";
 import { analyzeChanges } from "@/lib/services/change-analyzer";
 import { db } from "@/lib/db";
-import type { RequirementStep, StepName } from "@/types";
+import type { RequirementStep, StepName, RequirementCard } from "@/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -128,6 +128,15 @@ function computeCandidates(steps: RequirementStep[]): string[] {
     }
   }
   return out;
+}
+
+// 统计需求卡片中「已填写实质内容」的字段数（占位式"（…）"视为未填）。
+// 与下方渐进抽取后的卡片完备度判定共用，决定是否需要再触发一次 AI 抽取、以及需求确认是否达标。
+function countFilled(card?: RequirementCard): number {
+  if (!card) return 0;
+  return Object.values(card).filter(
+    (v) => typeof v === "string" && v.trim().length >= 3 && !v.startsWith("（")
+  ).length;
 }
 
 // 对话流式接口
@@ -361,19 +370,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           );
         }
 
-        const { reply, card } = await finalizeDialogue(requirementId, full);
+        const { reply } = await finalizeDialogue(requirementId, full);
 
         // [STEP_COMPLETE]/[COMPLEXITY] 按 prompt 约定位于 json 围栏之后，
         // 而 reply 只截取围栏之前文本——必须从完整流 full 检测，否则永远读不到标记
         let stepReady = /\[STEP_COMPLETE\]/.test(full);
         const complexityMatch = full.match(/\[COMPLEXITY:\s*(simple|standard|complex)\s*\]/i);
         const complexity = complexityMatch?.[1]?.toLowerCase();
-
-        const cardValues = Object.values(card || {});
-        const filledFields = cardValues.filter(
-          (v) => typeof v === "string" && v.trim().length >= 3 && !v.startsWith("（")
-        ).length;
-        if (filledFields >= 4) stepReady = true;
 
         const cleanReply = reply
           .replace(/\[STEP_COMPLETE\]/g, "")
@@ -390,6 +393,21 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
         await addMessage(requirementId, "assistant", finalReply);
 
+        // 渐进抽取需求卡片：独立于「模型是否在回复里夹带 JSON 卡片块」，把整段对话
+        // 交给专门的 extract-card prompt 压缩为结构化卡片，再增量合并写回。
+        // mergeRequirementCard 只填非空、覆盖已有值，故支持逐步完善与对话中纠正。
+        // 仅当合并后字段仍不足 4 个时触发一次额外 AI 调用，避免每轮都多一次模型请求。
+        let liveCard: RequirementCard =
+          (await getRequirement(requirementId))?.card ?? { ...EMPTY_CARD };
+        if (countFilled(liveCard) < 4) {
+          liveCard = await extractCardFromConversation(requirementId).catch(() => liveCard);
+        }
+        const cardValues = Object.values(liveCard || {});
+        const filledFields = cardValues.filter(
+          (v) => typeof v === "string" && v.trim().length >= 3 && !v.startsWith("（")
+        ).length;
+        if (filledFields >= 4) stepReady = true;
+
         // 修复空回复：模型可能仅输出卡片 JSON 无正文（reply 为空），
         // 落库的 finalReply 从未流式发出。此处以 reply 事件补发清理后的正式回复，
         // 前端 done 时优先使用它渲染气泡。
@@ -397,7 +415,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           encoder.encode(`event: reply\ndata: ${JSON.stringify(finalReply)}\n\n`)
         );
 
-        controller.enqueue(encoder.encode(`event: card\ndata: ${JSON.stringify(card)}\n\n`));
+        controller.enqueue(encoder.encode(`event: card\ndata: ${JSON.stringify(liveCard)}\n\n`));
 
         const autoTitle = await maybeAutoTitle(requirementId);
         if (autoTitle) {

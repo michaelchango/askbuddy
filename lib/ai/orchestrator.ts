@@ -1,11 +1,13 @@
 // Orchestrator（v2 泛化步骤管线）：组装上下文 → 取 prompt → 流式生成 → 解析 → 派发写回。
 import { getPrompt } from "./prompts";
 import { buildStepContext } from "./context/builder";
-import { streamAI } from "./client";
+import { streamAI, callAI } from "./client";
 import { extractReplyAndCard, extractResearchAnalysis, extractMarkdown } from "./parse";
 import { saveCardConnector } from "./connectors/internal/save-card";
 import { getOutput, saveResearchAnalysis, saveSolution, savePRD, type OutputType } from "@/lib/services/outputs";
-import type { ChatMessage } from "./types";
+import { listConversations } from "@/lib/services/conversations";
+import { extractCardPrompt } from "./prompts/extract-card";
+import type { ChatMessage, RequirementCardData } from "./types";
 import type { AITaskType } from "./models";
 
 export interface ChatReference {
@@ -67,6 +69,36 @@ export async function finalizeDialogue(
   const { reply, card } = extractReplyAndCard(fullText);
   await saveCardConnector.execute({ requirementId, data: card });
   return { reply, card: card as Record<string, string> };
+}
+
+// 需求卡片抽取（独立、可靠）：把整段对话压缩为结构化卡片。
+// 与 finalizeDialogue 里「依赖模型在回复中夹带 ```json 卡片块」的脆弱路径互补——
+// 这里直接拿全部对话历史喂给专门的 extract-card prompt，不依赖模型是否输出 JSON 块，
+// 因此即使轻量模型漏写卡片块，背景/目标用户/核心痛点等仍会被逐步记录进需求卡片。
+// 返回抽取到的部分卡片；对话为空或 AI 失败/无有效字段时返回 null（调用方据此决定是否跳过）。
+export async function extractCard(
+  requirementId: string
+): Promise<Partial<RequirementCardData> | null> {
+  const convs = await listConversations(requirementId);
+  if (convs.length === 0) return null;
+
+  const history: ChatMessage[] = convs.map((c) => ({
+    role: c.role === "user" ? "user" : "assistant",
+    content: c.content,
+  }));
+  const messages: ChatMessage[] = [
+    { role: "system", content: extractCardPrompt.system },
+    { role: "user", content: extractCardPrompt.buildUser({ message: "", history }) },
+  ];
+
+  try {
+    const result = await callAI("dialoguing", messages);
+    const { card } = extractReplyAndCard(result.content);
+    return Object.keys(card).length ? card : null;
+  } catch {
+    // AI 异常不阻断对话主流程，交由调用方保持原卡片
+    return null;
+  }
 }
 
 // ---- 通用步骤生成管线（v2：非对话一步式生成） ----

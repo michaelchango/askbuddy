@@ -3,11 +3,12 @@ import { db } from "@/lib/db";
 import { listProjects } from "@/lib/services/projects";
 import { listConversations } from "@/lib/services/conversations";
 import { summarizeTitle } from "@/lib/ai/title";
+import { extractCard } from "@/lib/ai/orchestrator";
 import { initSteps } from "@/lib/services/steps";
 import { attachDerivedStatus } from "@/lib/stage";
 import type { Requirement, RequirementCard, TitleSource } from "@/types";
 
-const EMPTY_CARD: RequirementCard = {
+export const EMPTY_CARD: RequirementCard = {
   background: "",
   targetUsers: "",
   painPoints: "",
@@ -210,46 +211,28 @@ export async function finalizeCardVersion(id: string, note?: string): Promise<nu
 
 // 由对话记录生成结构化需求卡片。卡片生成后仍保持在 dialoguing 阶段；
 // 步骤完成度由 requirement_steps 表独立管理，不再通过 status 切换阶段。
+//
+// 注意：不再用「用户原话前 500 字 + 其余字段写『待补充』」的退化实现——
+// 那会把未填写字段写成占位串污染卡片、且无法抽取目标用户/痛点等结构化信息。
+// 改为走整段对话的 AI 抽取（extractCardFromConversation），与对话过程的渐进抽取一致。
 export async function generateCard(id: string): Promise<RequirementCard> {
-  // 下推：只取该需求下的 user 消息，过滤全部交给 SQL
-  const convs = await db.findMany<{ role: string; content: string }>("conversations", {
-    where: { requirement_id: { eq: id }, role: { eq: "user" } },
-    orderBy: [["id", "asc"]],
-  });
-  const userText = convs.map((c) => c.content).join("\n");
+  const merged = await extractCardFromConversation(id);
+  // 手动「生成/重新生成卡片」视为一次定版：冻结为新版本并记录摘要。
+  await finalizeCardVersion(id, "AI 抽取生成卡片").catch(() => {});
+  return merged;
+}
 
-  const card: RequirementCard = {
-    background: userText.slice(0, 500) || "（暂无对话内容）",
-    targetUsers: "待补充",
-    painPoints: "待补充",
-    scope: "待补充",
-    nonFunctional: "待补充",
-    constraints: "待补充",
-  };
-
-  const now = new Date().toISOString();
+// 渐进抽取需求卡片：把整段对话交给专门的 extract-card prompt 压缩为结构化卡片，
+// 再经 mergeRequirementCard 增量合并（只填非空、覆盖已有值，支持逐步完善与纠正）。
+// 用作对话过程中自动写回卡片的可靠路径，弥补「模型在回复里夹带 JSON 卡片块」的不稳定。
+// 返回合并后的完整卡片（AI 无有效输出时原样返回库内现有卡片）。
+export async function extractCardFromConversation(id: string): Promise<RequirementCard> {
+  const card = await extractCard(id);
+  if (card && Object.keys(card).length) {
+    return mergeRequirementCard(id, card);
+  }
   const req = await getRequirement(id);
-  const currentVer = (req as unknown as Record<string, unknown>)?.current_version as number ?? 0;
-  const nextVersion = currentVer + 1;
-
-  // 保存版本历史
-  try {
-    await db.insert("card_versions", {
-      requirement_id: id,
-      version: nextVersion,
-      card,
-      note: "",
-      created_at: now,
-    });
-  } catch { /* 版本写入失败不阻塞主流程 */ }
-
-  await db.update("requirements", id, {
-    card,
-    current_version: nextVersion,
-    updatedAt: now,
-  });
-
-  return card;
+  return (req?.card ?? { ...EMPTY_CARD });
 }
 
 /**
