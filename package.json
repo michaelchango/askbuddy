@@ -7,18 +7,30 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "mcp": "tsx mcp/server.ts"
+    "mcp": "tsx mcp/server.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx db/drizzle/migrate.ts",
+    "db:reset": "tsx db/drizzle/reset.ts",
+    "db:seed": "tsx db/drizzle/seed.ts",
+    "db:studio": "drizzle-kit studio",
+    "db:check": "tsx scripts/check-db-contract.ts",
+    "db:setup:cloudbase": "tsx scripts/db-setup-cloudbase.ts",
+    "db:probe": "tsx scripts/probe-cloudbase-pg.ts",
+    "verify:embedding": "tsx scripts/verify-embedding.ts",
+    "test:parity": "tsx --test __tests__/db-pushdown-parity.test.ts"
   },
   "dependencies": {
+    "@cloudbase/manager-node": "^5.6.7",
     "@cloudbase/node-sdk": "^3.18.3",
-    "@modelcontextprotocol/sdk": "^1.0.0",
     "@hookform/resolvers": "^3.9.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
+    "drizzle-orm": "^0.33.0",
     "lucide-react": "^0.408.0",
     "mermaid": "^11.16.0",
-    "mysql2": "^3.10.0",
     "next": "^14.2.5",
+    "postgres": "^3.4.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.52.1",
@@ -31,15 +43,17 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@next/env": "^14.2.5",
     "@types/node": "^20.14.10",
-    "tsx": "^4.19.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.19",
+    "drizzle-kit": "^0.24.0",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.5",
     "postcss": "^8.4.39",
     "tailwindcss": "^3.4.4",
+    "tsx": "^4.19.0",
     "typescript": "^5.4.5"
   }
 }

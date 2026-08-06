@@ -180,10 +180,14 @@ export async function getOutput(
     let targetCard = card;
     let targetVersion = null as number | null;
     try {
-      const rows = await db.list<{
+      // 下推：命中 idx_card_ver_req (requirement_id, version)
+      const rows = await db.findMany<{
         version: number; card: unknown; note?: string; created_at: string;
-      }>("card_versions", (r) => r.requirement_id === requirementId);
-      vs = rows.sort((a, b) => a.version - b.version).map((v) => ({
+      }>("card_versions", {
+        where: { requirement_id: { eq: requirementId } },
+        orderBy: [["version", "asc"]],
+      });
+      vs = rows.map((v) => ({
         version: v.version, note: v.note, createdAt: v.created_at,
       }));
       if (version != null && vs.length > 0) {
@@ -208,10 +212,14 @@ export async function getOutput(
     let targetVersion = null as number | null;
 
     try {
-      const rows = await db.list<{
+      // 下推：命中 idx_ra_ver_req (requirement_id, version)
+      const rows = await db.findMany<{
         version: number; report?: string; user_stories?: unknown[]; features?: unknown[]; note?: string; created_at: string;
-      }>("research_analysis_versions", (r) => r.requirement_id === requirementId);
-      vs = rows.sort((a, b) => a.version - b.version).map((v) => ({
+      }>("research_analysis_versions", {
+        where: { requirement_id: { eq: requirementId } },
+        orderBy: [["version", "asc"]],
+      });
+      vs = rows.map((v) => ({
         version: v.version, note: v.note, createdAt: v.created_at,
       }));
 
@@ -275,10 +283,14 @@ export async function getOutput(
       let targetVersion: number | null = null;
 
       try {
-        const rows = await db.list<{
+        // 下推：命中 idx_sol_ver_req (requirement_id, version)
+        const rows = await db.findMany<{
           version: number; doc?: string; note?: string; created_at: string;
-        }>("solution_versions", (r) => r.requirement_id === requirementId);
-        vs = rows.sort((a, b) => a.version - b.version).map((v) => ({
+        }>("solution_versions", {
+          where: { requirement_id: { eq: requirementId } },
+          orderBy: [["version", "asc"]],
+        });
+        vs = rows.map((v) => ({
           version: v.version, note: v.note, createdAt: v.created_at,
         }));
 
@@ -345,10 +357,15 @@ export async function getOutput(
     // 从 solution_versions 读取方案文档版本列表
     let solVersions: OutputVersion[] = [];
     try {
-      const rows = await db.list<{ version: number; note?: string; created_at: string }>(
-        "solution_versions", (r) => r.requirement_id === requirementId
+      // 下推：命中 idx_sol_ver_req (requirement_id, version)
+      const rows = await db.findMany<{ version: number; note?: string; created_at: string }>(
+        "solution_versions",
+        {
+          where: { requirement_id: { eq: requirementId } },
+          orderBy: [["version", "asc"]],
+        }
       );
-      solVersions = rows.sort((a, b) => a.version - b.version).map((v) => ({
+      solVersions = rows.map((v) => ({
         version: v.version, note: v.note, createdAt: v.created_at,
       }));
     } catch { /* ignore */ }
@@ -370,10 +387,13 @@ export async function getOutput(
   }
 
   // PRD
-  const rows = await db.list<{
+  // 下推：命中 idx_prd_ver_req (requirement_id, version)
+  const rows = await db.findMany<{
     version: number; markdown: string; note?: string; created_at: string;
-  }>("prd_versions", (r) => r.requirement_id === requirementId);
-  rows.sort((a, b) => a.version - b.version);
+  }>("prd_versions", {
+    where: { requirement_id: { eq: requirementId } },
+    orderBy: [["version", "asc"]],
+  });
   const vs: OutputVersion[] = rows.map((v) => ({
     version: v.version, note: v.note, createdAt: v.created_at,
   }));
@@ -491,7 +511,6 @@ export async function savePRD(
       requirement_id: requirementId,
       version: nextVersion,
       markdown,
-      cos_key: "",
       note: "",
       created_at: now,
     });
@@ -504,7 +523,6 @@ export async function savePRD(
     requirement_id: requirementId,
     markdown,
     current_version: nextVersion,
-    cos_key: "",
     upstream_ids: [],
     maybe_stale: 0,
     updated_at: now,

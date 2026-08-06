@@ -31,8 +31,12 @@ export function deriveRequirementStatus(
   req: Requirement,
   steps: RequirementStep[]
 ): RequirementStatus {
-  if (req.archivedAt) return "archived";
-  if (steps.length === 0) return req.status;
+  // 口径统一为 snake_case：写入侧与各处 list 过滤用的都是 archived_at，
+  // 这里原本读的是 camelCase 的 archivedAt，因此该分支从未命中过（M1 修复）。
+  if (req.archived_at) return "archived";
+  // 无步骤记录 = 存量老数据未初始化。requirements 表已无 status 列（M1 T9），
+  // 读出必为 undefined，回退到工作流第一阶段而不是 undefined，避免 UI 拿到空状态。
+  if (steps.length === 0) return req.status ?? "dialoguing";
   const sorted = [...steps].sort(
     (a, b) => STEP_KEYS.indexOf(a.step) - STEP_KEYS.indexOf(b.step)
   );
@@ -49,8 +53,11 @@ export async function attachDerivedStatus(
   requirements: Requirement[]
 ): Promise<Requirement[]> {
   if (requirements.length === 0) return requirements;
-  const idSet = new Set(requirements.map((r) => r.id));
-  const rows = await db.list<{
+  // 下推：这是全站最热的查询之一 —— 每次列需求都会调用它。
+  // 原实现把 requirement_steps 全表（上限 1000 行）拉回来再用 Set.has 过滤，
+  // 需求数一多就会先撞上 1000 行截断，导致部分需求的阶段被算成 dialoguing。
+  const ids = requirements.map((r) => r.id);
+  const rows = await db.findMany<{
     id: number | string;
     requirement_id: string;
     step: string;
@@ -61,7 +68,7 @@ export async function attachDerivedStatus(
     awaiting_confirm?: number | boolean;
     completed_at?: string;
     updated_at: string;
-  }>("requirement_steps", (r) => idSet.has(r.requirement_id as string));
+  }>("requirement_steps", { where: { requirement_id: { in: ids } } });
 
   const grouped = new Map<string, RequirementStep[]>();
   for (const r of rows) {

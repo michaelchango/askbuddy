@@ -55,7 +55,9 @@ export async function initSteps(requirementId: string): Promise<void> {
 
 // 获取需求的所有步骤状态
 export async function getSteps(requirementId: string): Promise<RequirementStep[]> {
-  const rows = await db.list<{
+  // 下推 where；排序保留在内存：STEP_KEYS 是「工作流先后顺序」而非列值顺序，
+  // 无法用 ORDER BY 表达（除非在库里加一列 step_order，那是过度设计）。
+  const rows = await db.findMany<{
     id: number | string;
     requirement_id: string;
     step: string;
@@ -66,7 +68,9 @@ export async function getSteps(requirementId: string): Promise<RequirementStep[]
     awaiting_confirm?: number | boolean;
     completed_at?: string;
     updated_at: string;
-  }>("requirement_steps", (r) => r.requirement_id === requirementId);
+  }>("requirement_steps", {
+    where: { requirement_id: { eq: requirementId } },
+  });
 
   // 惰性初始化：旧需求可能没有步骤记录
   if (rows.length === 0) {
@@ -113,12 +117,14 @@ export async function setStepState(
     patch.awaiting_confirm = options.awaitingConfirm ? 1 : 0;
   }
 
-  const existing = await db.list(
-    "requirement_steps",
-    (r) => r.requirement_id === requirementId && r.step === step
-  );
+  // 只需要判断存在性，用 countMany 而不是把整行拉回来。
+  // PG 侧命中唯一索引 uq_step (requirement_id, step)，是一次索引探测。
+  const existing = await db.countMany("requirement_steps", {
+    requirement_id: { eq: requirementId },
+    step: { eq: step },
+  });
 
-  if (existing.length > 0) {
+  if (existing > 0) {
     // 行已存在：按 (requirement_id + step) 精确更新
     await db.updateWhere(
       "requirement_steps",

@@ -15,10 +15,13 @@ export async function POST(
     return NextResponse.json({ ok: false, error: "version required" }, { status: 400 });
   }
 
-  // 查找目标版本
-  const versions = await db.list<{ version: number; markdown: string; cos_key?: string }>(
+  // 查找目标版本（下推：命中 idx_prd_ver_req (requirement_id, version)）
+  const versions = await db.findMany<{ version: number; markdown: string }>(
     "prd_versions",
-    (r) => r.requirement_id === params.id && r.version === version
+    {
+      where: { requirement_id: { eq: params.id }, version: { eq: version } },
+      limit: 1,
+    }
   );
 
   if (!versions || versions.length === 0) {
@@ -30,9 +33,8 @@ export async function POST(
   // 更新 prds 主表为恢复的版本（current_version 不变，仅更新内容）
   await db.update("prds", params.id, {
     markdown: target.markdown,
-    cos_key: target.cos_key ?? "",
     updated_at: now,
-  });
+  }, "requirement_id");
 
   return NextResponse.json({ ok: true });
 }

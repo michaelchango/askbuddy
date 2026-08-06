@@ -68,6 +68,12 @@ export interface Requirement {
   projectId: string;
   title: string;
   titleSource?: TitleSource;
+  /**
+   * 【派生字段，不落库】需求阶段由 requirement_steps.state 实时推导，
+   * 经 lib/stage.ts:attachDerivedStatus 注入到返回对象上。
+   * 数据库 requirements 表【没有】status 列 —— 历史上有过，但自创建后从不更新
+   * （恒为 'dialoguing'），M1 已连同该列一并移除。读到的永远是推导值。
+   */
   status: RequirementStatus;
   priority?: "low" | "medium" | "high";
   tags?: string[];
@@ -76,7 +82,12 @@ export interface Requirement {
   card: RequirementCard;
   createdAt: string;
   updatedAt: string;
-  archivedAt?: string;
+  /**
+   * 归档时间。列名口径统一为 snake_case：写入侧与 listRequirements /
+   * listProjectRequirements 的过滤条件用的都是 archived_at，
+   * 而 stage.ts 曾误读 camelCase 的 archivedAt —— 那个分支从未命中过。M1 已统一。
+   */
+  archived_at?: string;
 }
 
 export interface AITask {

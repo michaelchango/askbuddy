@@ -4,7 +4,14 @@ import type { Project, Requirement, RequirementStatus } from "@/types";
 import { attachDerivedStatus } from "@/lib/stage";
 
 export async function listProjects(ownerId: string): Promise<Project[]> {
-  return db.list<Project>("projects", (r) => r.ownerId === ownerId && !r.deleted_at);
+  // 下推：过滤命中 idx_projects_owner (owner_id, status) WHERE deleted_at IS NULL；
+  // 排序列不在该索引里，PG 会在其上再加一次 Sort —— 项目数是个位数量级，可以接受。
+  // orderBy 与 ORDER_HINT 保持一致，让三个后端返回同一顺序 —— mock 是插入序、
+  // NoSQL 本就无序，PG 不显式排序同样不保证顺序，加上它才谈得上「行为等价」。
+  return db.findMany<Project>("projects", {
+    where: { ownerId: { eq: ownerId }, deleted_at: { isNull: true } },
+    orderBy: [["createdAt", "asc"]],
+  });
 }
 
 export async function getProject(id: string): Promise<Project | null> {
@@ -76,10 +83,13 @@ const NOT_STARTED: RequirementStatus[] = ["dialoguing"];
  * 仅依赖项目内需求数据，避免引入额外写库逻辑。
  */
 export async function getProjectStats(projectId: string): Promise<ProjectStats> {
-  const raw = await db.list<Requirement>(
-    "requirements",
-    (r) => r.projectId === projectId && !r.archived_at
-  );
+  // 下推：完整命中 idx_req_project (project_id, updated_at DESC) WHERE archived_at IS NULL。
+  // 本函数只做计数，顺序对结果无影响；仍显式声明是为了与 listRequirements 同一口径，
+  // 让两条查询在执行计划里长得一样，排查问题时不必分辨「这条为什么多了个 Sort」。
+  const raw = await db.findMany<Requirement>("requirements", {
+    where: { projectId: { eq: projectId }, archived_at: { isNull: true } },
+    orderBy: [["updatedAt", "desc"]],
+  });
   const requirements = await attachDerivedStatus(raw);
 
   const total = requirements.length;

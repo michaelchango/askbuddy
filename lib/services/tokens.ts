@@ -35,10 +35,11 @@ export interface ListTokenRow extends TokenRow {
 }
 
 export async function listTokens(userId: string): Promise<ListTokenRow[]> {
-  const rows = await db.list<TokenRow & { token_hash: string }>(
-    "api_tokens",
-    (r) => r.user_id === userId && !r.revoked_at
-  );
+  // 下推：命中 idx_token_user (user_id) WHERE revoked_at IS NULL
+  const rows = await db.findMany<TokenRow & { token_hash: string }>("api_tokens", {
+    where: { user_id: { eq: userId }, revoked_at: { isNull: true } },
+    orderBy: [["created_at", "asc"]],
+  });
   return rows.map(({ token_hash: _th, key_preview: kp, expires_at, ...rest }) => ({
     ...rest,
     key_preview: (kp as string) || computeKeyPreview(_th),

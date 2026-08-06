@@ -53,15 +53,18 @@ export async function getPrototypeHtml(
 
 // 列出某需求的全部原型版本。
 export async function listVersions(requirementId: string): Promise<PrototypeVersion[]> {
-  const rows = await db.list<{
+  // 下推：命中 idx_proto_ver_req (requirement_id, version)
+  const rows = await db.findMany<{
     version: number;
     note?: string;
     created_at?: string;
     html_storage_key?: string;
     structure: PrototypeStructure | null;
     model?: string | null;
-  }>("prototype_versions", (r) => r.requirement_id === requirementId);
-  rows.sort((a, b) => a.version - b.version);
+  }>("prototype_versions", {
+    where: { requirement_id: { eq: requirementId } },
+    orderBy: [["version", "asc"]],
+  });
   return rows.map((r) => ({
     version: r.version,
     note: r.note,
@@ -162,11 +165,12 @@ export async function createShareToken(
 }
 
 export async function getShareToken(requirementId: string): Promise<string | null> {
-  const rows = await db.list<{ id: string; created_at: string }>(
-    "share_tokens",
-    (r) => r.requirement_id === requirementId && r.type === "prototype"
-  );
-  rows.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  // 下推：命中 idx_share_req (requirement_id, type, created_at DESC)，只取最新一条
+  const rows = await db.findMany<{ id: string; created_at: string }>("share_tokens", {
+    where: { requirement_id: { eq: requirementId }, type: { eq: "prototype" } },
+    orderBy: [["created_at", "desc"]],
+    limit: 1,
+  });
   return rows[0]?.id ?? null;
 }
 

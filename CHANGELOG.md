@@ -2,6 +2,17 @@
 
 本文件记录每次版本（M 阶段）的更新说明，远端 GitHub 与本地保持同步。
 
+## M1 — 数据底座 NoSQL → CloudBase PostgreSQL（经网关 SQL 接口，不依赖 DATABASE_URL）(2026-08-06)
+
+- **数据层四后端一套契约**：`mock` / `nosql` / `postgres`(直连 PG 协议) / `cloudbase`(网关 SQL 接口)。新增 `lib/db/cloudbase.ts`。
+- **cloudbase 后端（B 通道）**：全部 SQL 走 CloudBase 公网网关 `/v1/rdb/exec-pgsql`，凭据复用 `CLOUDBASE_SECRET`（API Key），以 `Role=cloudbase_postgres` 调用；**不依赖 `DATABASE_URL`（PG 协议连接串）**，无需腾讯云密钥。
+- **SQL 构造**：exec-pgsql 网关不支持参数化（占位符 `$1` 报 500），改用「安全字面量序列化」——标识符走 field-map 白名单 / TABLES 集合，值统一转义（`'` 与 `\`），JSONB 列追加 `::jsonb`，等效预处理语句、零注入风险。
+- **建库脚本** `scripts/db-setup-cloudbase.ts`（`npm run db:setup:cloudbase`）：`CREATE EXTENSION IF NOT EXISTS vector` + 拆分 `db/schema.sql` 逐条执行，幂等。已建 16 张业务表 + 12 索引，`vector` 扩展可用。
+- **真 pgvector（撤销临时方案）**：用户决策改回真向量检索。原「real[] + 应用层余弦」临时方案废弃；`searchVector`（lib/db/{postgres,cloudbase}.ts）经 `1 - (col <=> $q::vector)` 在 SQL 层下推余弦相似度，业务零改动。`docs/ops/pgvector-enabled.md`、`db/schema.sql` 注释同步更新。
+- **对拍测试泛化**：`__tests__/db-pushdown-parity.test.ts` L3 不再强依赖 `DATABASE_URL`，`DB_BACKEND=cloudbase`（无 DATABASE_URL）也能对真实库跑 list/findMany 对拍。
+- **验收**：`npm run db:check` 契约 16/16/16；`npm run test:parity DB_PARITY_PG=true` 真实 CloudBase **82/82**（含 L3）；真 pgvector `<=>` 检索端到端通过；`next build` 全绿。
+- **配置**：`.env.local` 置 `DB_BACKEND=cloudbase`；`DATABASE_URL` 留空（cloudbase 路径不需要）。`tsconfig.json` 排除探索用 `scripts/probe-*.ts` 以免拖慢构建类型检查。
+
 ## M0 — 命名统一 AskBuddy 化 + 技术债清理 (2026-08-05)
 
 - **全站命名收敛**：`prdflow` / `PRDTube` / `prd_session` → `askbuddy` / `AskBuddy` / `askbuddy_session`

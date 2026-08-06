@@ -16,6 +16,21 @@ function toShellUser(u: { uid: string; email: string }): ShellUser {
   };
 }
 
+/**
+ * dashboard 是登录后的个性化页面，每次请求都要按当前用户查项目列表，
+ * 本就不该被静态预渲染。
+ *
+ * 不加这行会有一个隐蔽后果：`getSession()` 目前是过渡期实现（硬编码返回
+ * mock-user-001，不读 cookies），Next 探测不到任何动态信号，于是把
+ * /dashboard 及其子路由判为 Static —— 也就是 `next build` 期间就会真的
+ * 去连数据库跑 listProjects()。这会让构建机被迫持有生产库凭据，
+ * 且用户数据可能被烤进静态 HTML。
+ *
+ * 等 M2 把 getSession() 换成真实的 cookies() 读取后，Next 会自动判为
+ * 动态渲染，这行届时可以删除。
+ */
+export const dynamic = "force-dynamic";
+
 export default async function DashboardLayout({
   children,
 }: {

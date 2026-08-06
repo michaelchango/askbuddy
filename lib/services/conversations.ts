@@ -20,10 +20,13 @@ export interface ConversationRow {
 export async function listConversations(
   requirementId: string
 ): Promise<ConversationRow[]> {
-  const rows = await db.list<ConversationRow>("conversations", (r) =>
-    r.requirement_id === requirementId
-  );
-  return rows.sort((a, b) => a.id - b.id);
+  // 下推：原实现拉回全表（上限 1000 行）再内存过滤 + 排序。对话表是全库增长最快的，
+  // 单需求几十轮对话就会让「取一个需求的对话」变成扫全库。
+  // PG 侧走 idx_conv_req (requirement_id, id)，过滤与排序都由索引直接满足。
+  return db.findMany<ConversationRow>("conversations", {
+    where: { requirement_id: { eq: requirementId } },
+    orderBy: [["id", "asc"]],
+  });
 }
 
 export async function addMessage(

@@ -1,3 +1,57 @@
 {
-  "extends": "next/core-web-vitals"
+  "extends": "next/core-web-vitals",
+  "overrides": [
+    {
+      "files": [
+        "app/**/*.ts",
+        "app/**/*.tsx",
+        "components/**/*.ts",
+        "components/**/*.tsx",
+        "lib/services/**/*.ts",
+        "lib/ai/**/*.ts",
+        "lib/render/**/*.ts",
+        "mcp/**/*.ts",
+        "middleware.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "drizzle-orm",
+                "message": "AD-1：Drizzle 只能在 lib/db/** 内部使用。业务代码请用 @/lib/db 门面（db.findMany / db.get / ...）。"
+              },
+              {
+                "name": "postgres",
+                "message": "AD-1：postgres.js 驱动只能在 lib/db/postgres.ts 里使用。业务代码请用 @/lib/db 门面。"
+              },
+              {
+                "name": "@/lib/db/postgres",
+                "message": "AD-1：不要直接引用具体后端，请用 @/lib/db 门面 —— 直连后端会让 USE_MOCK / DB_BACKEND 的切换失效。"
+              },
+              {
+                "name": "@/lib/db/nosql",
+                "message": "AD-1：不要直接引用具体后端，请用 @/lib/db 门面。"
+              },
+              {
+                "name": "@/lib/db/mock",
+                "message": "AD-1：不要直接引用具体后端，请用 @/lib/db 门面。"
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["drizzle-orm/*"],
+                "message": "AD-1：Drizzle 只能在 lib/db/** 内部使用。"
+              },
+              {
+                "group": ["@/db/drizzle", "@/db/drizzle/*"],
+                "message": "AD-1：Drizzle schema 是 lib/db 的内部实现细节，业务代码不应感知表结构定义。"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }
