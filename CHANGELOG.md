@@ -51,3 +51,19 @@
 - **修复损坏的 mermaid 安装**：原 `npm install` 被网络中断截断，用 `npm pack` 重拉完整 tarball 补齐 ESM 入口与类型
 - **新增文件**：`.gitattributes`（统一行尾）、`lib/auth/constants.ts`、`lib/events.ts`
 - **验收**：`tsc --noEmit` 通过；`next build` 干净通过（14/14 静态页，Middleware 26.5kB）；命名扫描仅剩白名单兼容项
+
+## M1.3 — 修复：需求页「卡片不更新 / AI 断流 / 浏览器并发 500」(2026-08-06)
+
+- **现象（用户实测）**：
+  1. 对话过程中右侧需求卡片（背景/目标用户/核心痛点等）不随对话刷新；
+  2. 原本「记录用户回答 + 引导下一需求点」的机制断流——用户回答后 AI 只回「好的，已收到」就停；
+  3. 浏览器控制台每轮出现 1 次 `Failed to load resource: status 500`。
+- **根因 A/B（同一处）**：Next.js App Router 运行时替换了全局 `fetch`，`lib/db/cloudbase.ts` 的 `execPgSql` 与 `lib/api/client.ts` 的 `api()` 缺少 `cache: "no-store"`，导致 SELECT 响应被写进 **Data Cache（落盘 `.next/cache/fetch-cache`，重启 dev 都不失效）**。每次 DB 读（卡片/消息）都经过这两处——读 `getMessages` 返回陈旧历史 → 模型只看到残缺上下文 → 产出死回复「好的，已收到」（现象 B）；读 `getRequirement` 的卡片 → 面板永不刷新（现象 A）。两现象同源，一处 `no-store` 修复同时解决。
+  - 注：PRDHub 时代走 `@cloudbase/node-sdk`（SDK 自带 HTTP 客户端，不经全局 fetch）故无此问题；迁到网关 SQL 通道后才暴露。已在两处 `fetch` 补 `cache: "no-store"` 并注明「删掉会立刻制造数据永远不更新的幽灵 bug」。
+- **根因 C（500）**：CloudBase 网关 SQL 通道是「session 模式」，单会话连接池上限 `pool_size=10`。浏览器打开需求页会瞬间并发发起多个接口（RSC 页面渲染 + 多个 SWR 拉取 + 对话流读），`listOutputs` 一次 `Promise.all` 就扇出 4 条 `db.get`；在途连接突破 10 → 网关报 `DATABASE_XX000 EMAXCONNSESSION`（max clients reached）→ `execPgSql` 抛错 → Route Handler 包成 500 打回前端控制台。
+- **修复 C（DB 层健壮性）**：在 `lib/db/cloudbase.ts` 给 `execPgSql` 套上「**并发栅栏（令牌桶，上限 6，留足余量给本机常驻的孤儿 dev server 同食同一 10 连接池）+ 瞬时错误重试（退避，仅对 EMAXCONNSESSION/限流/抖动类重试，业务错误立即抛出）**」，从根上避免池耗尽、消除偶发 500。
+- **回归测试（真实无头浏览器 E2E）**：
+  - `scripts/probe-ui-e2e.cjs`：建临时 project+requirement → 无头 Chromium 开需求页 → 发 4 轮对话（产品想法→目标用户→核心痛点→背景）→ 断言卡片逐轮实时回填且 DOM==API、AI 持续引导无「好的，已收到」、无 500、背景未臆造（用户未给→空占位正常，给了→回填）。**12/12 PASS**。
+  - `scripts/probe-sse-e2e.ts`：SSE 协议层回归（事件序列 / 卡片事件 / done）。
+  - 浏览器经 `askbuddy_session` cookie 绕过 `middleware.ts` 的 `/login` 跳转；导航前带 cookie 预热重型页面路由避免编译超时。
+- **验收**：真实浏览器 E2E 12/12 PASS、服务端日志无 EMAXCONNSESSION/500；现象 A/B 复现脚本（step-by-step 对话）卡片与回复均恢复实时。

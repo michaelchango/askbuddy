@@ -59,12 +59,48 @@ function assertConfig(): void {
 // 执行：exec-pgsql
 // ---------------------------------------------------------------------------
 
-/**
- * 经 B 通道执行一条 SQL。返回 SELECT 的结果行（数组，空结果即 []）；
- * 非 SELECT 返回 [] 或 [{ok:1}]（网关形态，本后端不依赖其具体形状）。
- */
-async function execPgSql<T = Row>(sqlText: string): Promise<T[]> {
-  assertConfig();
+// ---------------------------------------------------------------------------
+// 并发栅栏：CloudBase 网关 SQL 通道是「session 模式」，单会话连接池上限 pool_size=10。
+// 浏览器打开需求页会瞬间并发发起多个接口（RSC 页面渲染 + 多个 SWR 拉取 + 对话流读），
+// 每个接口又各自扇出多条 SELECT（如 listOutputs 一次 Promise.all 4 条 db.get），
+// 极易突破 10 连接 → 网关报 DATABASE_XX000 EMAXCONNSESSION（max clients reached），
+// 被 execPgSql 包成异常、Route Handler 再包成 500 打回前端控制台。
+// 用令牌桶把「同时打向网关的 exec-pgsql 数」限制在上限以下，从根上避免池耗尽。
+// （本机还常驻着上几轮遗留的孤儿 dev server，同样吃这同一个 10 连接池，
+//   故阈值留足余量取 6，而非紧贴 10。）
+// ---------------------------------------------------------------------------
+const MAX_CONCURRENT_SQL = 6;
+let _sqlActive = 0;
+const _sqlWaiters: Array<() => void> = [];
+function acquireSqlSlot(): Promise<void> {
+  if (_sqlActive < MAX_CONCURRENT_SQL) {
+    _sqlActive++;
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => _sqlWaiters.push(resolve));
+}
+function releaseSqlSlot(): void {
+  _sqlActive--;
+  if (_sqlActive < MAX_CONCURRENT_SQL && _sqlWaiters.length > 0) {
+    _sqlActive++;
+    _sqlWaiters.shift()!();
+  }
+}
+
+// 网关瞬时错误：连接池耗尽 / 限流 / 网关抖动等。这些应重试而非直接 500。
+function isTransientSqlError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /EMAXCONNSESSION|max clients reached|DATABASE_XX000|DATABASE_25006|429|503|ECONNRESET|ETIMEDOUT|socket hang up|timed out/i.test(
+    msg
+  );
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** 单次执行一条 SQL（不含并发控制与重试）。 */
+async function execPgSqlOnce<T = Row>(sqlText: string): Promise<T[]> {
   const res = await fetch(`${BASE}/v1/rdb/exec-pgsql`, {
     method: "POST",
     headers: {
@@ -73,14 +109,60 @@ async function execPgSql<T = Row>(sqlText: string): Promise<T[]> {
       Accept: "application/json",
     },
     body: JSON.stringify({ Sql: sqlText, Role: ROLE }),
+    // 【必须 no-store，删掉会立刻制造"数据永远不更新"的幽灵 bug】
+    // Next.js 在 App Router 运行时里替换了全局 fetch，默认把响应写进 Data Cache，
+    // 且该缓存【落盘】在 .next/cache/fetch-cache，重启 dev server 都不失效。
+    // 本函数的 SELECT 语句对同一行是逐字节相同的字符串 —— 一旦命中缓存，
+    // 之后无论数据库怎么变，读到的永远是第一次的快照：
+    // 现象就是"UPDATE 明明 RETURNING 了新值，接口却一直返回旧值"。
+    // （PRDHub 时代走 @cloudbase/node-sdk，用的是 SDK 自带 HTTP 客户端，
+    //   不经全局 fetch，所以没这个问题；迁到网关 SQL 通道后才暴露。）
+    // 数据库读写是绝对动态的，任何缓存语义在这里都是错的。
+    cache: "no-store",
   });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`exec-pgsql HTTP ${res.status}: ${text}\nSQL: ${sqlText.slice(0, 300)}`);
   }
   const data = (await res.json()) as unknown;
+  // DB_SQL_TRACE=1 时打印每条 SQL 与网关原始响应，排查"写了没生效/读到旧值"用。
+  if (process.env.DB_SQL_TRACE) {
+    console.error(
+      `[SQL] ${sqlText.slice(0, 400)}\n[RES] isArray=${Array.isArray(data)} ${JSON.stringify(data).slice(0, 300)}`
+    );
+  }
   if (Array.isArray(data)) return data as T[];
   return [];
+}
+
+/**
+ * 经 B 通道执行一条 SQL。返回 SELECT 的结果行（数组，空结果即 []）；
+ * 非 SELECT 返回 [] 或 [{ok:1}]（网关形态，本后端不依赖其具体形状）。
+ *
+ * 修复：套上「并发栅栏 + 瞬时错误重试」，彻底消除浏览器并发拉取时偶发的
+ * EMAXCONNSESSION → 500（见文件顶部并发栅栏说明）。
+ */
+async function execPgSql<T = Row>(sqlText: string): Promise<T[]> {
+  assertConfig();
+  await acquireSqlSlot();
+  try {
+    const MAX_ATTEMPTS = 3;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      try {
+        return await execPgSqlOnce<T>(sqlText);
+      } catch (e) {
+        lastErr = e;
+        // 仅对瞬时的连接池/网关类错误重试；业务错误（如字段契约漂移、SQL 语法错）
+        // 立即抛出，避免掩盖真实问题。
+        if (!isTransientSqlError(e)) break;
+        if (attempt < MAX_ATTEMPTS - 1) await sleepMs(120 * Math.pow(2, attempt));
+      }
+    }
+    throw lastErr;
+  } finally {
+    releaseSqlSlot();
+  }
 }
 
 // ---------------------------------------------------------------------------
