@@ -65,11 +65,16 @@ function assertConfig(): void {
 // 每个接口又各自扇出多条 SELECT（如 listOutputs 一次 Promise.all 4 条 db.get），
 // 极易突破 10 连接 → 网关报 DATABASE_XX000 EMAXCONNSESSION（max clients reached），
 // 被 execPgSql 包成异常、Route Handler 再包成 500 打回前端控制台。
-// 用令牌桶把「同时打向网关的 exec-pgsql 数」限制在上限以下，从根上避免池耗尽。
-// （本机还常驻着上几轮遗留的孤儿 dev server，同样吃这同一个 10 连接池，
-//   故阈值留足余量取 6，而非紧贴 10。）
+//
+// 两层防御：
+//  (1) 每条网关请求强制 Connection: close（见 execPgSqlOnce）——session 模式下一个
+//      keep-alive 连接就占一个 SQL 会话槽，本机常驻的孤儿 dev server 即使空闲也会
+//      长期霸占几条 keep-alive 会话不释放，把 10 槽池占死。关掉 keep-alive 后，空闲
+//      进程占 0 槽，只有「在途」请求才占槽，跨进程竞争问题从根上消除。
+//  (2) 令牌桶把「单进程同时打向网关的 exec-pgsql 数」限制在 4（远低于 10），即便同机
+//      再开一个 dev server 各跑 4，合计 8 也留 2 槽余量，杜绝单进程内突发打满池。
 // ---------------------------------------------------------------------------
-const MAX_CONCURRENT_SQL = 6;
+const MAX_CONCURRENT_SQL = 4;
 let _sqlActive = 0;
 const _sqlWaiters: Array<() => void> = [];
 function acquireSqlSlot(): Promise<void> {
@@ -107,6 +112,13 @@ async function execPgSqlOnce<T = Row>(sqlText: string): Promise<T[]> {
       Authorization: `Bearer ${API_KEY}`,
       "Content-Type": "application/json",
       Accept: "application/json",
+      // 【必须 Connection: close】CloudBase 网关 SQL 通道是 session 模式：一个
+      // keep-alive 连接就占一个 SQL 会话槽，pool_size=10。若开 keep-alive，本机
+      // 空闲的孤儿 dev server 也会长期握着几条会话不释放，把 10 槽池占死，导致
+      // 活跃服务器任何请求（哪怕是单条 UPDATE）都 EMAXCONNSESSION。关掉后空闲进程
+      // 占 0 槽，仅在途请求占槽，跨进程争用从根上消除。（undici 会尊重该请求头、
+      // 响应后立即不复用 socket。）
+      "Connection": "close",
     },
     body: JSON.stringify({ Sql: sqlText, Role: ROLE }),
     // 【必须 no-store，删掉会立刻制造"数据永远不更新"的幽灵 bug】
@@ -146,7 +158,9 @@ async function execPgSql<T = Row>(sqlText: string): Promise<T[]> {
   assertConfig();
   await acquireSqlSlot();
   try {
-    const MAX_ATTEMPTS = 3;
+    // 瞬时错误（连接池耗尽 / 限流 / 网关抖动）最多重试 5 次，指数退避 + 抖动。
+    // EMAXCONNSESSION 返回的是 HTTP 400（非 5xx），故重试判定靠错误体关键字，不靠状态码。
+    const MAX_ATTEMPTS = 5;
     let lastErr: unknown;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       try {
@@ -156,7 +170,9 @@ async function execPgSql<T = Row>(sqlText: string): Promise<T[]> {
         // 仅对瞬时的连接池/网关类错误重试；业务错误（如字段契约漂移、SQL 语法错）
         // 立即抛出，避免掩盖真实问题。
         if (!isTransientSqlError(e)) break;
-        if (attempt < MAX_ATTEMPTS - 1) await sleepMs(120 * Math.pow(2, attempt));
+        if (attempt < MAX_ATTEMPTS - 1) {
+          await sleepMs(150 * Math.pow(2, attempt) + Math.floor(Math.random() * 120));
+        }
       }
     }
     throw lastErr;

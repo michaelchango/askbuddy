@@ -67,3 +67,15 @@
   - `scripts/probe-sse-e2e.ts`：SSE 协议层回归（事件序列 / 卡片事件 / done）。
   - 浏览器经 `askbuddy_session` cookie 绕过 `middleware.ts` 的 `/login` 跳转；导航前带 cookie 预热重型页面路由避免编译超时。
 - **验收**：真实浏览器 E2E 12/12 PASS、服务端日志无 EMAXCONNSESSION/500；现象 A/B 复现脚本（step-by-step 对话）卡片与回复均恢复实时。
+
+## M1.3.1 — 精炼修复：进入下一阶段时 UPDATE requirement_steps 仍偶发 EMAXCONNSESSION (2026-08-07)
+
+- **现象（用户实测）**：卡片填到阈值、对话建议「是否进入下一阶段」时，后端 `UPDATE "requirement_steps" SET "awaiting_confirm"=1`（conversation/route.ts:434，无 `.catch`）抛出 `exec-pgsql HTTP 400: DATABASE_XX000 EMAXCONNSESSION`，整个 SSE 流被打挂。
+- **M1.3 的修复为何没兜住**：M1.3 的并发栅栏只在**单进程内**限流，且重试只防「瞬时」。真凶是**跨进程的空闲 keep-alive 连接**：网关 SQL 通道是 session 模式，**一个 keep-alive 连接就占一个 SQL 会话槽，池只有 10**；本机常驻的多个孤儿 `next dev`（旧代码、仍开 keep-alive）即使空闲也各握着几条会话不释放，把 10 槽池占死。活跃服务器发请求时池已满，重试那几百毫秒里槽位始终没空，3 次全失败。
+- **根因定位手段**：本地 mock `globalThis.fetch` 的单测（`__tests__/cloudbase-retry.test.ts`）确定性验证重试与请求头；并实测 `Get-NetTCPConnection` 发现 5 个 AskBuddy 孤儿 dev server（:3000/:3001/:3002/:3003/:3077）同时在吃连接池，已用 PowerShell `Stop-Process` 全部清除释放会话槽。
+- **修复（DB 层）**：
+  1. **每条网关请求强制 `Connection: close`**（execPgSqlOnce 的 fetch header）——session 模式下空闲进程占 0 会话槽，只有「在途」请求才占槽，跨进程争用从根上消除；
+  2. **并发栅栏上限 6 → 4**：即便同机再开一个 dev server 各跑 4，合计 8 也留 2 槽余量；
+  3. **重试 3 → 5 次、指数退避 + 随机抖动**（150ms·2ⁿ + ≤120ms 抖动），且重试判定靠错误体关键字 `EMAXCONNSESSION`（它返回的是 HTTP 400 而非 5xx，不靠状态码）。
+- **回归测试**：`__tests__/cloudbase-retry.test.ts` 3/3 PASS —— ① EMAXCONNSESSION(HTTP400) 重试 2 次后成功且每次请求带 `Connection: close`；② 持续 EMAXCONNSESSION 在 5 次后抛错；③ 业务类错误（SQL 语法错）不重试立即抛出。`scripts/probe-ui-e2e.cjs` 真实浏览器 E2E 12/12 PASS（含卡片填满后触发 awaiting_confirm UPDATE 的路径，无 500）。
+- **运维项（根治关键）**：连接池是**全机共享**的，务必「只跑一个 `next dev`」。本机残留的多个孤儿 dev server 会持续占满池，需手动结束（`Stop-Process -Name node` 筛 AskBuddy 的 next 进程，或重启机器）。代码侧的 `Connection: close` 已保证活跃服务器不再制造空闲占用。
