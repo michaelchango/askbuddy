@@ -108,3 +108,13 @@
   - `__tests__/cloudbase-retry.test.ts` 3/3 PASS（不受重试次数改动影响）。
 - **结论**：用户报的「报错一直显示」已修复（横幅不再卡死、偶发连接池抖动降级为可恢复提示）；但 `pool_size=10` 按环境共享的**结构性上限仍在**，根治仍需「调大 `pool_size`」或「迁移 PG 协议 `pg.Pool`（transaction 模式）」（见 M1.3.2）。代码侧已做到：共享池偶发争用下，用户**永远能拿到 AI 回复并继续推进**，不会被卡死。
 
+## M1.3.4 — `handleProceed` fire-and-forget 导致「对话自动推进失败但按钮可以」的修复 (2026-08-07)
+
+- **用户实测反馈**：需求卡片完成后，在对话里发「进入下一阶段」→ AI 回答「推进到调研分析」但**调研报告未生成**；再发一次「进入下一阶段」→ 出现 500 兜底「好的，已收到」；但此时**点击顶部「进入下一阶段」按钮却能正常生成报告**。两条路径本应触发同一套流程，不该出现不同结果。
+- **根因**：`handleProceed`（`requirement-shell.tsx` 第 494 行）中 `handleGenerate(nextStep)` 是 **fire-and-forget（无 `await`）**。当对话 AUTO 分支通过 SSE 下发 `proceed_prompt{auto:true}` → 前端调用 `handleProceed` → PATCH 标记当前步骤 done → 再 fire-and-forget 调用 `handleGenerate(nextStep)` 发起调研/方案/PRD 生成。若生成 API 因瞬时 DB 故障（EMAXCONNSESSION）返回 500，`handleGenerate` 的 catch 仅 `console.error` 后静默吞掉错误——用户看到「推进到 XX」的回复但报告永不出。而之前 `pendingPrompt`（来自 STEP_COMPLETE 判定）仍未清除，所以**顶部按钮恰好指向相同的（步→下一步）对、且点击时 DB 池已释放，能成功生成**——两条路径走了同一套 `handleProceed → handleGenerate` 代码，但失败路径对用户完全不可见。
+- **修复（三处联动）**：
+  1. **`handleGenerate` catch 改为 re-throw**（`requirement-shell.tsx`）：让调用方能捕获错误并做降级，而非静默吞掉。`processChangeQueue`（变更更新队列）已有 try/catch 不受影响。
+  2. **`handleGenerate` SSE 解析新增 `error` 事件处理**：后端生成流水线异常（如 EMAXCONNSESSION）经 SSE `event: error` 下发时，原逻辑完全忽略、静默等到 `done` 结束；现改为抛出 `Error(msg)`，中断 SSE 读取并触发外层 catch。
+  3. **`handleProceed` 中 `await handleGenerate` + 失败回退**：生成失败后**设置 `pendingPrompt`**（与正常 `proceed_prompt` 行为一致），用户可通过顶部按钮重试；同时 dispatch `EVT.GEN_ERROR` 通知对话面板显示可恢复错误横幅（8s 自动消失）。AbortError（用户主动取消）则跳过、不设重试入口。
+- **新增事件常量** `EVT.GEN_ERROR = "askbuddy:gen-error"`（`lib/events.ts`）：`requirement-shell` 下发 → `conversation-panel` 监听并设置 `setError`（含 8s 自动消失）。
+- **验收**：`tsc --noEmit` 零错误。逻辑上，生成失败后用户会立即看到：① 错误横幅（8s 后消失）；② 顶部出现「生成失败，请点击上方按钮重试」确认按钮——点击即重试同一对（步→下一步），等效正常 proceed_prompt 流程。

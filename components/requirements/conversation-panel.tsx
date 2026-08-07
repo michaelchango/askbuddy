@@ -416,6 +416,26 @@ export function ConversationPanel({
     return () => window.removeEventListener(EVT.CHANGE_COMPLETE, handler);
   }, [rid]);
 
+  // 监听自动推进生成失败事件（handleProceed 在 handleGenerate 抛错时下发）
+  // 将错误显示为可恢复横幅 + 8s 自动消失，引导用户通过顶部按钮重试
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        requirementId: string;
+        step: string;
+        message: string;
+      };
+      if (!detail.requirementId || detail.requirementId !== rid) return;
+      const msg = detail.message || "自动推进生成失败，请通过上方阶段栏按钮重试。";
+      setError(msg);
+      // 8 秒后自动消失（可恢复性质）
+      if (errTimerRef.current) clearTimeout(errTimerRef.current);
+      errTimerRef.current = setTimeout(() => setError(null), 8000);
+    };
+    window.addEventListener(EVT.GEN_ERROR, handler);
+    return () => window.removeEventListener(EVT.GEN_ERROR, handler);
+  }, [rid]);
+
   // 卸载时清理可恢复错误的自动消失计时器，避免对已卸载组件 setState
   useEffect(() => {
     return () => {

@@ -17,6 +17,8 @@ export const EVT = {
   REQUEST_MODIFY: "askbuddy:request-modify",
   /** 「继续下一步」提示卡 */
   PROCEED_PROMPT: "askbuddy:proceed-prompt",
+  /** 自动推进生成失败，通知对话面板显示可恢复错误 */
+  GEN_ERROR: "askbuddy:gen-error",
 } as const;
 
 export type EvtName = (typeof EVT)[keyof typeof EVT];

@@ -276,6 +276,14 @@ export function RequirementShell({
                   new CustomEvent(EVT.GEN_MESSAGE, { detail: { content: data.content, requirementId } })
                 );
               } catch { /* ignore */ }
+            } else if (eventType === "error") {
+              // 后端生成流水线异常（如 EMAXCONNSESSION）：中断 SSE 读取，抛错给外层 catch
+              let msg = "服务端生成异常";
+              try {
+                const edata = JSON.parse(raw) as { message?: string };
+                if (edata.message) msg = edata.message;
+              } catch { /* parse 失败用默认 msg */ }
+              throw new Error(msg);
             }
             cursor = dataEnd + 2;
           }
@@ -312,6 +320,8 @@ export function RequirementShell({
         if (!(e instanceof DOMException && e.name === "AbortError")) {
           console.error("生成失败:", e);
         }
+        // re-throw 让调用方（handleProceed / processChangeQueue）能捕获并做降级/重试入口
+        throw e;
       } finally {
         genAbortRef.current = null;
         setGeneratingStep(null);
@@ -490,8 +500,31 @@ export function RequirementShell({
       /* ignore */
     }
     // 再生成下一节点（最后一步仅置 done，不再生成）
+    // 注意：此处必须 await，不然生成失败会被静默吞掉（fire-and-forget），
+    // 表现为「自动推进时 AI 回复了但报告没生成，顶部按钮却能正常走」。
     if (nextStep) {
-      handleGenerate(nextStep);
+      try {
+        await handleGenerate(nextStep);
+      } catch (e) {
+        // AbortError = 用户主动中止（切换页面/取消生成），不设重试入口
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        const errMsg = e instanceof Error ? e.message : String(e);
+        console.error("自动推进生成失败:", errMsg);
+        // 失败后退化为 pendingPrompt，让用户可通过顶部按钮重试（与正常 proceed_prompt 行为一致）
+        setPendingPrompt({
+          step,
+          nextStep,
+          canSkip: false,
+          message: `生成失败（${errMsg.slice(0, 80)}），请点击上方按钮重试。`,
+          version,
+        });
+        // 同时通知对话面板，替换残留空回复气泡为错误提示并清除横幅
+        window.dispatchEvent(
+          new CustomEvent(EVT.GEN_ERROR, {
+            detail: { requirementId, step: nextStep, message: errMsg },
+          })
+        );
+      }
     }
   }, [pendingPrompt, handleGenerate, requirementId, refreshSteps]);
 
