@@ -146,3 +146,27 @@
   - 「进入原型设计」/`「开始原型设计」` → `isNavCommand` 命中 → AUTO 分支正确判断 `subPhase:"prototype"` → 经完整事件链传到 `handleProceed` → 进入子阶段分支 → `await generatePrototype` → 原型正常生成或失败时显示重试按钮。
   - design 步骤**不再被错误地提前标为 done**。
 - **是否要拆分 5 步**：本次修复后，4 步模型的子阶段链路已完整打通（subPhase 正确传递、错误处理已对齐）。**在踩到更多子阶段相关 bug 之前，建议先保留 4 步方案**——这次的 bug 根因是事件链字段丢失（属于可定位的硬错误），不是 4 步模型的本质缺陷。
+
+## M1.3.7 — 需求变更场景：原型文案错显「已生成」+ 顶部按钮被翻转、重复生成需求文档 (2026-08-07)
+
+- **用户实测反馈（进入 M2 前的回归）**：在「需求文档」阶段（未确认）发起变更，三个文档变更完成提示都是「xxxx已更新」，但原型完成提示却是「✅ 原型已生成…」（应是「已更新」）；且变更前顶部按钮是「需求文档已生成，请确认」，变更完成后按钮竟变成「原型已完成，确认后进入需求文档…」，点击还会真的再生成一遍需求文档。用户准确预判：原型生成比文档慢、按钮按"最新完成产物"显示导致错乱。
+- **根因 A（原型变更文案）**：前端 `generatePrototype(message)` 把变更说明当成 `message` 字段 POST 给原型路由，而原型路由 / `prototype-sse.ts` 只认 `changeNote`/`baseVersionId` 来判定 `isEdit` → 变更重生成原型时 `isEdit=false` → 显示"已生成"文案。
+- **根因 B（按钮翻转 + 重复生成下游）**：`prototype-sse.ts` 末尾**无条件**下发 `proceed_prompt`（推进到 `prd_writing`）并**无条件** `setAwaitingConfirm(design, true)`。对比 `design/route.ts`、`prd/route.ts` 的 change 分支都已正确处理（`isFrontier` 判定 + 不携带 `subPhase`）。原型的变更/编辑模式漏了这道区分——变更场景下原型只是"更新已有产物"，不应推进流程、也不应重开 design 闸门，否则顶部按钮被翻成"原型已完成，确认后进入需求文档"，点击后又把已生成的需求文档再生成一遍。
+- **修复（两处）**：
+  1. **`requirement-shell.tsx`**：`generatePrototype(changeNote="")` 参数改名并 POST `{ message: "", changeNote }`，把变更说明正确透传给原型路由（`processChangeQueue` 本就传 `changeNote` 作首参，改名后即对齐）；`generatePrototypeRef` 类型同步。
+  2. **`lib/api/prototype-sse.ts`**：仅 `!isEdit` 时才 `setAwaitingConfirm(design, true)` 并下发推进用 `proceed_prompt`；编辑/变更模式下只更新产物、刷新 `step_update`/`gen_message` 并在聊天区给出「✅ 原型已更新…」，绝不推进流程。
+- **验收**：`tsc --noEmit` 零错误。修复后变更场景：① 原型完成提示变为「已更新」；② 顶部按钮保持为变更前的「需求文档已生成，请确认」，不再被翻转、不再误触发需求文档重复生成。普通自动生成原型（isEdit=false）与手动从原型面板编辑（isEdit=true）路径均保持原行为。
+
+## M1.3.8 — 性能优化：发送按钮长时间不可点 + 首屏/重渲染偏慢 (2026-08-07)
+
+- **用户反馈**：本地进入项目页/需求页慢；对话时 AI 文字回了但「等待需求卡片更新」「等待发送按钮变可点」很久；输出物生成后整页重渲染慢。问是本地环境还是代码问题。
+- **诊断结论**：部分是本地 dev 按需编译的固有开销；但代码侧确有三类可优化瓶颈：
+  1. **发送按钮被后端整条流水线阻塞**：`conversation/route.ts` 在 `done` 之前串行做了落库 + **卡片抽取二次 LLM 调用** + 自动标题 + 步骤写库；前端 `send()` 的 `busy` 一直等到整条 SSE 流（含 `done`）读完才解禁。故"文字到了但按钮还卡、卡片迟迟不更新"。
+  2. **SWR 默认 `revalidateOnFocus=true`**：切回标签页即对所有 key（含详情页 `req`/`project`/`siblings` 的串行 waterfall）重新请求，冗余重拉。
+  3. **`mermaid` 静态打进首屏客户端包** + `MarkdownRenderer`/`MermaidBlock` 无固定化，内容未变也重复解析大文档 + 重复跑 mermaid。
+- **修复（三处）**：
+  1. **`conversation-panel.tsx`**：收到 `reply` 事件（AI 文字已完整下发）即**解禁发送按钮**，不再等卡片抽取/落库；并加 `AbortController`（新一轮发送取消上一轮仍在后台的 SSE）+ `sendId` 判定，杜绝被取消流的 `finally` 误触本轮 `busy`。
+  2. **新增 `components/providers.tsx`** + 在 `app/dashboard/layout.tsx` 包裹全局 `SWRConfig`（`revalidateOnFocus:false`、`revalidateOnReconnect:false`、`dedupingInterval:5000`），消除聚焦重验风暴；个别需保留默认行为的 hook 仍可本地覆盖。
+  3. **`markdown-renderer.tsx`**：`mermaid` 改为动态 `import()`（需求详情首屏不再加载该大依赖）；`MermaidBlock` / `MarkdownRenderer` 包 `React.memo`，内容未变时不重复解析/重渲染（用 `Symbol` 标记替代易失效的 `.name` 判定）。
+- **验收**：`tsc --noEmit` 零错误。剩余"首屏慢"主要是本地 dev 按需编译，生产构建不含此开销。
+- **M2 建议（未做，记录）**：① 详情页 `project`/`siblings` 依赖 `req.projectId` 形成串行 waterfall，可并行或带 `fallbackData`；② 项目列表页为算"每项目需求数"一次性拉全量需求，后端应加聚合接口；③ 变更时的卡片抽取二次 LLM 调用是卡片更新慢的主因，可考虑小模型或本地规则抽取。

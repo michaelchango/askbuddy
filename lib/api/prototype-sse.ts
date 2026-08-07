@@ -42,10 +42,6 @@ export async function prototypeSSE(
           opts.baseVersionId
         );
 
-        // 原型属于「方案设计」步骤的第二个子阶段。生成/修改完成后打开方案设计步骤的确认闸门，
-        // 用户确认后由前端标记 design 步骤完成并进入 PRD 写作。设置 awaitingConfirm 以便退出重进后仍能恢复闸门。
-        await setAwaitingConfirm(requirementId, "design", true).catch(() => {});
-
         const genMessage = isEdit
           ? "✅ 原型已更新，可继续修改，或在上方阶段栏确认后进入下一阶段。"
           : "✅ 原型已生成，可继续修改，或在上方阶段栏确认后进入下一阶段。";
@@ -64,17 +60,24 @@ export async function prototypeSSE(
             `event: gen_message\ndata: ${JSON.stringify({ content: genMessage })}\n\n`
           )
         );
-        // 原型子阶段确认闸门：nextStep 指向 prd_writing，无 subPhase → 确认后标记 design 完成并推进
-        controller.enqueue(
-          encoder.encode(
-            `event: proceed_prompt\ndata: ${JSON.stringify({
-              step: "design",
-              nextStep: nextStepOf("design"),
-              canSkip: false,
-              message: "原型已就绪，确认后进入需求文档阶段。",
-            })}\n\n`
-          )
-        );
+        // 原型子阶段确认闸门：nextStep 指向 prd_writing，无 subPhase → 确认后标记 design 完成并推进。
+        // 仅 normal 模式下发：变更 / 编辑模式下原型只是"更新已有产物"，
+        // 不应推进流程、也不应重开 design 闸门（否则会把顶部按钮翻成"原型已完成，确认后进入需求文档"，
+        // 点击后又会把已经生成过的需求文档再生成一遍）。design / prd 路由已在各自 change 分支里正确
+        // 区分了前沿 / 上游，此处原型需与之一致。
+        if (!isEdit) {
+          await setAwaitingConfirm(requirementId, "design", true).catch(() => {});
+          controller.enqueue(
+            encoder.encode(
+              `event: proceed_prompt\ndata: ${JSON.stringify({
+                step: "design",
+                nextStep: nextStepOf("design"),
+                canSkip: false,
+                message: "原型已就绪，确认后进入需求文档阶段。",
+              })}\n\n`
+            )
+          );
+        }
 
         controller.enqueue(
           encoder.encode(

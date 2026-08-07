@@ -3,34 +3,40 @@
 import React, { useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import mermaid from "mermaid";
 
-let mermaidReady = false;
-function ensureMermaid() {
-  if (!mermaidReady) {
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: "neutral",
-      securityLevel: "strict",
-      fontFamily: "inherit",
+// mermaid 体积较大且仅在渲染 ```mermaid 代码块时才需要，改为动态 import，
+// 避免被静态打进需求详情页的首屏客户端包，显著缩短首次进入的 JS 加载 / 解析时间。
+let mermaidPromise: Promise<typeof import("mermaid").default> | null = null;
+function ensureMermaid(): Promise<typeof import("mermaid").default> {
+  if (!mermaidPromise) {
+    mermaidPromise = import("mermaid").then((m) => {
+      m.default.initialize({
+        startOnLoad: false,
+        theme: "neutral",
+        securityLevel: "strict",
+        fontFamily: "inherit",
+      });
+      return m.default;
     });
-    mermaidReady = true;
   }
+  return mermaidPromise;
 }
 
-function MermaidBlock({ code, disabled }: { code: string; disabled?: boolean }) {
+function MermaidBlockInner({ code, disabled }: { code: string; disabled?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     if (disabled) return; // 生成中：暂不渲染，避免边生成边重绘导致页面抖动/反复横跳
     let cancelled = false;
-    ensureMermaid();
-    const id = `mmd-${Math.random().toString(36).slice(2)}`;
-    mermaid
-      .render(id, code)
-      .then(({ svg }: { svg: string }) => {
-        if (!cancelled && ref.current) ref.current.innerHTML = svg;
+    ensureMermaid()
+      .then((mermaid) => {
+        if (cancelled) return;
+        const id = `mmd-${Math.random().toString(36).slice(2)}`;
+        return mermaid.render(id, code);
+      })
+      .then((res) => {
+        if (!cancelled && res && ref.current) ref.current.innerHTML = res.svg;
       })
       .catch(() => {
         if (!cancelled) setError(true);
@@ -59,13 +65,19 @@ function MermaidBlock({ code, disabled }: { code: string; disabled?: boolean }) 
   return <div ref={ref} className="my-3 flex justify-center" />;
 }
 
+// 内容未变时不重渲染（避免父组件因 outputs/generating 切换而重复解析大文档 + 重复跑 mermaid）
+const MermaidBlock = React.memo(MermaidBlockInner);
+// 用稳定标记让 pre 组件识别出「子节点已是 MermaidBlock」（React.memo 包装后 .name 不可靠）
+const MERMAID_MARKER = Symbol.for("askbuddy-mermaid-block");
+(MermaidBlock as unknown as Record<symbol, boolean>)[MERMAID_MARKER] = true;
+
 /**
  * 统一 Markdown 渲染器：react-markdown + remark-gfm。
  * - 支持 GFM 表格、任务列表、删除线、自动链接等。
  * - ```mermaid 代码块渲染为流程图（渲染失败回退为代码块）。
  * - 元素样式自包含，不依赖 @tailwindcss/typography 的 prose。
  */
-export default function MarkdownRenderer({
+function MarkdownRendererInner({
   content,
   disableMermaid = false,
 }: {
@@ -147,8 +159,7 @@ export default function MarkdownRenderer({
           // 若子节点已是 MermaidBlock（由 code 返回），直接透传，避免被 <pre> 包裹。
           if (
             React.isValidElement(child) &&
-            typeof child.type === "function" &&
-            (child.type as { name?: string }).name === "MermaidBlock"
+            (child.type as unknown as Record<symbol, boolean>)?.[MERMAID_MARKER]
           ) {
             return <>{child}</>;
           }
@@ -180,3 +191,8 @@ export default function MarkdownRenderer({
     </Markdown>
   );
 }
+
+// 内容未变时不重复解析整篇文档（大 PRD / 方案渲染开销主要在 react-markdown 解析）。
+const MarkdownRenderer = React.memo(MarkdownRendererInner);
+
+export default MarkdownRenderer;

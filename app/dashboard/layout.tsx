@@ -5,6 +5,7 @@ import {
   DashboardShell,
   type ShellUser,
 } from "@/components/layout/dashboard-shell";
+import Providers from "@/components/providers";
 
 /** 由会话用户派生出 Shell 需要展示的姓名/首字母（不再写死前端 mock 用户） */
 function toShellUser(u: { uid: string; email: string }): ShellUser {
@@ -45,7 +46,7 @@ export default async function DashboardLayout({
 
   return (
     <DashboardShell user={toShellUser(session)} hideSidebar={hideSidebar}>
-      {children}
+      <Providers>{children}</Providers>
     </DashboardShell>
   );
 }

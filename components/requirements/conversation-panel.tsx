@@ -76,6 +76,10 @@ export function ConversationPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const hasSentRef = useRef(false);
+  // 对话流并发控制：取消上一轮仍在后台读取的 SSE（文字已显示但卡片抽取等仍在跑），
+  // 避免上一轮 done 的 finally 误把本轮 busy 解禁；同时用 sendId 判定"本轮是否仍是当前轮"。
+  const convAbortRef = useRef<AbortController | null>(null);
+  const convSendIdRef = useRef(0);
   // 可恢复错误（连接池瞬时耗尽等）的自动消失计时器；硬错误（AI 不可用等）不自动消失。
   const errTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 复制反馈：当前已复制消息的 id（1.5s 后自动清除）
@@ -141,6 +145,13 @@ export function ConversationPanel({
     setRefOpen(false);
     hasSentRef.current = true;
 
+    // 取消上一轮仍在后台读取的对话流（其文字已显示，但卡片抽取 / 落库等后端工作可能还在跑）。
+    // 否则上一轮 done 的 finally 会把本轮（新发送）的 busy 状态误解除，造成按钮在生成中变可点。
+    convAbortRef.current?.abort();
+    const ac = new AbortController();
+    convAbortRef.current = ac;
+    const mySendId = ++convSendIdRef.current;
+
     let currentId = rid;
     try {
       if (!currentId) {
@@ -172,6 +183,7 @@ export function ConversationPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message, references: refs }),
+        signal: ac.signal,
       });
       if (!res.body) throw new Error("无响应");
 
@@ -200,6 +212,9 @@ export function ConversationPanel({
             } catch {
               /* ignore */
             }
+            // AI 文字回复已完整下发 → 立即解禁发送按钮，不再等待卡片抽取 / 落库等后续后端工作。
+            // 仅当本轮仍是当前轮时才解禁，避免被已取消的旧流 finally 误触。
+            if (convSendIdRef.current === mySendId) setBusy(false);
           } else if (event === "card") {
             // 卡片成功回传说明 DB 此刻可达，清掉任何残留错误横幅
             setError(null);
@@ -350,9 +365,15 @@ export function ConversationPanel({
         }
       }
     } catch (e) {
+      // 被新一轮发送主动取消（AbortError）：属正常流程，不报错、不干扰新一轮的 busy 状态。
+      if (e instanceof DOMException && e.name === "AbortError") {
+        return;
+      }
       setError(e instanceof Error ? e.message : "发送失败");
     } finally {
-      setBusy(false);
+      // 仅当本轮仍是当前轮时才解禁按钮（被取消的旧流不要误触新一轮状态）。
+      if (convSendIdRef.current === mySendId) setBusy(false);
+      if (convAbortRef.current === ac) convAbortRef.current = null;
     }
   }
 

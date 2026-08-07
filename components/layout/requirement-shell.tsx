@@ -462,7 +462,7 @@ export function RequirementShell({
   }, [requirementId, processChangeQueue]);
 
   // 原型生成函数引用（定义于下方，用 ref 避免初始化顺序导致的 TDZ）
-  const generatePrototypeRef = useRef<((message?: string) => Promise<void>) | null>(null);
+  const generatePrototypeRef = useRef<((changeNote?: string) => Promise<void>) | null>(null);
 
   // 用户点击【确认并进入下一阶段】或系统自动推进：先把当前节点置【已完成】，再生成下一节点
   // promptArg: 当由自动推进触发时传入（避免依赖 state 中的 pendingPrompt）
@@ -565,8 +565,10 @@ export function RequirementShell({
   }, [pendingPrompt]);
 
   // 进入原型子阶段后自动根据方案设计生成可交互原型（复用与 handleGenerate 相同的 SSE 解析）
+  // 参数 changeNote：变更模式下携带"该文档要改什么"，后端据此做精准修改而非盲重生成；
+  // 普通模式调用方不传，保持 isEdit=false → 走正常的"生成原型 + 推进闸门"流程。
   const generatePrototype = useCallback(
-    async (message = "") => {
+    async (changeNote = "") => {
       // 借用户点击按钮的手势上下文请求通知权限
       void requestPermission();
 
@@ -583,7 +585,7 @@ export function RequirementShell({
         const res = await fetch(apiPath, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify({ message: "", changeNote }),
           signal: controller.signal,
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
