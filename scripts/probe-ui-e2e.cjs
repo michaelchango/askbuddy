@@ -184,8 +184,10 @@ function browserLastAssistant() {
     const noDead = (s) => !!s && !s.includes("好的，已收到");
     const filled = (s) => !!s && s.length > 2 && !s.includes("未填写");
     const checks = [
-      // 现象A：卡片随对话逐步更新（已提供的字段才回填，未提供的保持空占位）
-      ["R1 背景未臆造(用户未给→空占位正常)", bg1.includes("未填写")],
+      // 现象A：卡片随对话逐步更新；R1 背景抽取必须「取材于用户原话」而非臆造——
+      // 用户首句已含「肉鸽」，故要么填的是 grounded 内容（含「肉鸽」），要么留空占位，
+      // 但绝不能出现与用户无关的编造内容。
+      ["R1 背景未臆造(抽取自用户原话/或空占位)", !bg1.includes("未填写") && (!filled(bg1) || bg1.includes("肉鸽"))],
       ["R2 目标用户面板已填充 (现象A)", filled(tu2)],
       ["R2 目标用户 API 一致", filled(tu2api.targetUsers)],
       ["R3 核心痛点面板已填充 (现象A)", filled(pp3)],

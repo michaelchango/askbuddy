@@ -41,8 +41,8 @@ const EMAX = () =>
     }),
     { status: 400, headers: { "content-type": "application/json" } }
   );
-const OK = (rows: unknown[] = []) =>
-  new Response(JSON.stringify(rows), {
+const OK = () =>
+  new Response(JSON.stringify([]), {
     status: 200,
     headers: { "content-type": "application/json" },
   });
@@ -57,7 +57,7 @@ test("EMAXCONNSESSION（HTTP 400）会被重试并最终成功", async () => {
   const { fn, calls } = makeMockFetch([EMAX, EMAX, OK]);
   globalThis.fetch = fn as unknown as typeof fetch;
   try {
-    const { __internals } = await import("../lib/db/cloudbase.ts");
+    const { __internals } = await import("../lib/db/cloudbase");
     const res = await __internals.execPgSql("SELECT 1");
     assert.deepStrictEqual(res, []);
     assert.strictEqual(calls.length, 3, "应重试 2 次后第 3 次成功");
@@ -73,7 +73,7 @@ test("持久 EMAXCONNSESSION 会在 MAX_ATTEMPTS 次后抛出", async () => {
   const orig = globalThis.fetch;
   globalThis.fetch = (() => EMAX()) as unknown as typeof fetch;
   try {
-    const { __internals } = await import("../lib/db/cloudbase.ts");
+    const { __internals } = await import("../lib/db/cloudbase");
     await assert.rejects(() => __internals.execPgSql("SELECT 1"), /EMAXCONNSESSION/);
   } finally {
     globalThis.fetch = orig;
@@ -85,7 +85,7 @@ test("业务类错误（SQL 语法错）不重试，立即抛出", async () => {
   const { fn, calls } = makeMockFetch([SYNTAX]);
   globalThis.fetch = fn as unknown as typeof fetch;
   try {
-    const { __internals } = await import("../lib/db/cloudbase.ts");
+    const { __internals } = await import("../lib/db/cloudbase");
     await assert.rejects(() => __internals.execPgSql("SELECT bad"), /syntax error/);
     assert.strictEqual(calls.length, 1, "业务错误不应重试");
   } finally {

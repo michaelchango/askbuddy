@@ -79,3 +79,15 @@
   3. **重试 3 → 5 次、指数退避 + 随机抖动**（150ms·2ⁿ + ≤120ms 抖动），且重试判定靠错误体关键字 `EMAXCONNSESSION`（它返回的是 HTTP 400 而非 5xx，不靠状态码）。
 - **回归测试**：`__tests__/cloudbase-retry.test.ts` 3/3 PASS —— ① EMAXCONNSESSION(HTTP400) 重试 2 次后成功且每次请求带 `Connection: close`；② 持续 EMAXCONNSESSION 在 5 次后抛错；③ 业务类错误（SQL 语法错）不重试立即抛出。`scripts/probe-ui-e2e.cjs` 真实浏览器 E2E 12/12 PASS（含卡片填满后触发 awaiting_confirm UPDATE 的路径，无 500）。
 - **运维项（根治关键）**：连接池是**全机共享**的，务必「只跑一个 `next dev`」。本机残留的多个孤儿 dev server 会持续占满池，需手动结束（`Stop-Process -Name node` 筛 AskBuddy 的 next 进程，或重启机器）。代码侧的 `Connection: close` 已保证活跃服务器不再制造空闲占用。
+
+## M1.3.2 — 生产多用户场景：连接池是「按 CloudBase 环境共享」的硬上限 (2026-08-07)
+
+- **用户追问**：系统部署到服务器后，会不会出现「两个用户在用、第三个被堵死」的类似问题？
+- **实测结论（关键）**：`pool_size=10` 的 session 模式连接池是**按 CloudBase 环境（同一 `CLOUDBASE_ENV_ID`）共享**的硬上限，不是「按进程」也不是「按用户」。单个干净实例（并发栅栏上限 4 + `Connection: close`）**绝不会**自己耗光 10 槽——孤立单实例 E2E 12/12 PASS、服务端日志 0 个 EMAXCONNSESSION。但**只要环境里存在任何其他消费者**（第二个实例、用户自己的实时会话、同一环境的其它应用），它们都吃同一份 10 槽：本机仅 2 个实例并发时就复现了间歇性 500，连单实例在「用户同时在线使用同一环境」时也偶发 500。**这正是「第三个用户被堵死」的结构性风险**，与本地孤儿进程无关、是网关 ceiling 本身。
+- **代码加固（软降级，避免硬失败）**：`app/api/requirements/[id]/conversation/route.ts` 把 conversation 流里「非必要」的写库副作用（`maybeAutoTitle` / `setAwaitingConfirm` / `getSteps` / `markStepInProgress`）整体包进内层 `try/catch`——`reply`/`card` 事件已先发出，这部分失败只意味着「阶段闸门未自动打开」，发 `recoverable:true` 的错误事件并照常发 `done`，**不再让整条 SSE 流断裂**。即便连接池在高并发下被瞬时空满，第三个用户也是「AI 回复与卡片已更新，请稍后点击重试」而非对话炸掉。
+- **真正的生产级解法（不在代码、在配置/架构）**：
+  1. **调大 `pool_size`**：`pool_size=10` 是网关侧（或环境规格）配置项，向 CloudBase 控制台/工单申请调大（如 50~100），多实例并发即可舒适容纳；这是最直接的杠杆。
+  2. **改用 PG 协议 `DATABASE_URL` + `pg.Pool`（transaction 模式）替代网关 `exec-pgsql` HTTP 通道**：CloudBase 官方「连接管理」文档推荐的线上做法，连接上限是 PG 实例的 `max_connections`（通常 100+），且按「单实例池上限 × 实例数」自己掌控；本项目的 SQL 已是安全字面量序列化（field-map 白名单 + `lit()` 转义），直接落到 `pg.Pool` 无注入风险。属较大的数据层重构，需单独排期。
+  3. **上线初期保持单实例 / 低实例数**，等 `pool_size` 调大或完成 PG 协议迁移后再水平扩容。
+- **验收**：`tsc --noEmit` 通过；`__tests__/cloudbase-retry.test.ts` 3/3 PASS；孤立单实例E2E 12/12 PASS（0 个 EMAXCONNSESSION）。多实例/共享环境下的偶发 500 由上述软降级 + `pool_size` 调大兜底。
+

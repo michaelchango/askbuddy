@@ -417,6 +417,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
         controller.enqueue(encoder.encode(`event: card\ndata: ${JSON.stringify(liveCard)}\n\n`));
 
+        // 写库兜底：autoTitle / 阶段状态写入为非必要副作用，连接池耗尽(EMAXCONNSESSION)等
+        // 瞬时故障不应让整条 SSE 流断裂。reply/card 已先发出，此处失败仅「阶段闸门未自动
+        // 打开」，发 recoverable 错误事件并照常 done，使高并发下的第三个用户软降级而非硬 500。
+        try {
         const autoTitle = await maybeAutoTitle(requirementId);
         if (autoTitle) {
           controller.enqueue(
@@ -458,6 +462,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           const steps = await getSteps(requirementId);
           controller.enqueue(
             encoder.encode(`event: step_update\ndata: ${JSON.stringify(steps)}\n\n`)
+          );
+        }
+        } catch (e) {
+          const m = e instanceof Error ? e.message : String(e);
+          controller.enqueue(
+            encoder.encode(
+              `event: error\ndata: ${JSON.stringify({
+                message: "阶段状态保存失败：AI 回复与卡片已更新，请稍后点击重试",
+                recoverable: true,
+                detail: m.slice(0, 200),
+              })}\n\n`
+            )
           );
         }
 
