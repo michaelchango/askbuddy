@@ -91,3 +91,20 @@
   3. **上线初期保持单实例 / 低实例数**，等 `pool_size` 调大或完成 PG 协议迁移后再水平扩容。
 - **验收**：`tsc --noEmit` 通过；`__tests__/cloudbase-retry.test.ts` 3/3 PASS；孤立单实例E2E 12/12 PASS（0 个 EMAXCONNSESSION）。多实例/共享环境下的偶发 500 由上述软降级 + `pool_size` 调大兜底。
 
+## M1.3.3 — 「报错信息一直显示」横幅卡死 + 对话轮彻底抗连接池抖动的修复 (2026-08-07)
+
+- **用户实测反馈**：需求卡片完成后、点顶部「进入下一阶段」能实际往后走（生成调研报告、继续到方案设计），但**那句 `EMAXCONNSESSION` 报错横幅一直挂在界面上不消失**（SQL 仍是 `SELECT * FROM "requirements"` 那条 `getRequirement`）。
+- **根因 A（前端横幅不清除）**：该 `getRequirement` 在 `conversation/route.ts` 里位于**任何 try 之外**，连接池瞬时耗尽时一路冒泡到最外层 `catch` → 发**致命 `error` 事件**（携带原始 `exec-pgsql HTTP 400 ...` 文本）。而前端 `conversation-panel.tsx` 只在「用户再发一条消息」时（`send()` 开头 `setError(null)`）才清横幅；用户是去点顶部的「进入下一步」（走另一条 API），根本不触发 `send()`，于是致命横幅**永久残留**。
+- **根因 B（该致命错误发生在 reply/card/done 之前）**：第 401 行的 `getRequirement` 在 `reply`/`card`/`done` 下发之前就抛错，整轮对话直接炸，横幅挂住、无法自动消除。
+- **修复（后端 `conversation/route.ts`）**：
+  1. 把卡片抽取块（含 `getRequirement` + `extractCardFromConversation`）整体包进 `try/catch`——读/抽失败仅跳过本次卡片更新（且不发 `card` 事件，避免把右侧已填好的卡片清空），**`reply`/`done` 照常下发**；
+  2. 引入 `replySent` 标志：回复一旦经 SSE 下发，后续任何**瞬时 DB 故障**（含 `finalizeDialogue` 读历史、`addMessage` 落库、阶段状态写入）都降级为 `recoverable:true` 错误事件 + 照常 `done`，**不再致命**；`finalizeDialogue` 与 `addMessage(assistant)` 也各自包成非致命（失败仅跳过落库，回复已发给用户）；
+  3. 路由级测试钩子 `FORCE_CONV_CARD_FAIL=1`：仅让对话轮的 `getRequirement` 抛 `EMAXCONNSESSION`，精确复现用户场景而不影响初始页面加载。
+- **修复（前端 `conversation-panel.tsx`）**：错误横幅在收到 `done` / `card` / `step_update` / `proceed_prompt` 等**进展类事件时清除**；`recoverable:true` 的错误**8 秒后自动消失**，不长期占界面；卸载时清理自动消失计时器。这样即便偶发瞬时故障，横幅也不会卡死。
+- **配套调优（`lib/db/cloudbase.ts`）**：并发栅栏上限 `4 → 3`（单进程至多占 3 槽，给同环境其它消费者留 ≥4 槽余量）；重试 `5 → 7` 次（指数退避 + 抖动），更稳地吸收共享池的瞬时争用；导出 `isTransientSqlError` 供路由复用。
+- **回归测试**：
+  - `scripts/probe-error-recover.cjs`（新）：用 `FORCE_CONV_CARD_FAIL=1` 确定性复现「`SELECT requirements` 读库失败」——断言**本轮正常结束(reply/done 已下发)、AI 回复气泡出现、错误横幅未残留**，3/3 PASS；
+  - `scripts/probe-ui-e2e.cjs`：新增「对话结束后错误横幅未残留」断言，并把背景字段断言改为「正确行为」口径（用户未给→空占位 / 给了→取材原话，不臆造）；常规 E2E **13/13 PASS**（两轮稳定），R4 背景正确抽取为「参加 Game Jam 的练手项目…」；
+  - `__tests__/cloudbase-retry.test.ts` 3/3 PASS（不受重试次数改动影响）。
+- **结论**：用户报的「报错一直显示」已修复（横幅不再卡死、偶发连接池抖动降级为可恢复提示）；但 `pool_size=10` 按环境共享的**结构性上限仍在**，根治仍需「调大 `pool_size`」或「迁移 PG 协议 `pg.Pool`（transaction 模式）」（见 M1.3.2）。代码侧已做到：共享池偶发争用下，用户**永远能拿到 AI 回复并继续推进**，不会被卡死。
+

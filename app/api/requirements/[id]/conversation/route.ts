@@ -13,6 +13,7 @@ import {
 } from "@/lib/services/steps";
 import { analyzeChanges } from "@/lib/services/change-analyzer";
 import { db } from "@/lib/db";
+import { isTransientSqlError } from "@/lib/db/cloudbase";
 import type { RequirementStep, StepName, RequirementCard } from "@/types";
 
 export const runtime = "nodejs";
@@ -359,6 +360,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const sse = new ReadableStream({
     async start(controller) {
+      // 回复是否已通过 SSE 下发给用户。一旦为 true，后续任何瞬时 DB 故障都不再致命
+      // （用户已拿到 AI 回复，仅本轮卡片/落库可能延迟，下轮补齐），而是降级为可恢复错误 + done。
+      let replySent = false;
       try {
         const reader = stream.getReader();
         while (true) {
@@ -370,7 +374,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           );
         }
 
-        const { reply } = await finalizeDialogue(requirementId, full);
+        // finalizeDialogue 内部要读历史消息（DB）。连接池瞬时耗尽时不该让整轮致命：
+        // 失败则退化为「请重试」提示，仍完整走完 reply/done，避免对话流断裂。
+        let reply = "";
+        try {
+          const r = await finalizeDialogue(requirementId, full);
+          reply = r.reply;
+        } catch (e) {
+          console.error(
+            "[conversation] finalizeDialogue 失败（降级为重试提示）:",
+            e instanceof Error ? e.message : String(e)
+          );
+          reply = "抱歉，刚才网络有点波动，没能生成回复。请再发一次，或稍等片刻重试～";
+        }
 
         // [STEP_COMPLETE]/[COMPLEXITY] 按 prompt 约定位于 json 围栏之后，
         // 而 reply 只截取围栏之前文本——必须从完整流 full 检测，否则永远读不到标记
@@ -391,22 +407,52 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         // 阶段切换提示统一由 proceed_prompt 事件在顶栏阶段条呈现（双按钮闸门）。
         const finalReply = cleanReply;
 
-        await addMessage(requirementId, "assistant", finalReply);
+        // 助手回复落库：回复已通过 SSE 发给用户，落库失败仅影响历史持久化，属可恢复，
+        // 不应阻断本轮（下轮对话会重新抽取/补齐）。
+        try {
+          await addMessage(requirementId, "assistant", finalReply);
+        } catch (e) {
+          console.error(
+            "[conversation] 助手消息落库失败（非致命）:",
+            e instanceof Error ? e.message : String(e)
+          );
+        }
 
         // 渐进抽取需求卡片：独立于「模型是否在回复里夹带 JSON 卡片块」，把整段对话
         // 交给专门的 extract-card prompt 压缩为结构化卡片，再增量合并写回。
         // mergeRequirementCard 只填非空、覆盖已有值，故支持逐步完善与对话中纠正。
         // 仅当合并后字段仍不足 4 个时触发一次额外 AI 调用，避免每轮都多一次模型请求。
-        let liveCard: RequirementCard =
-          (await getRequirement(requirementId))?.card ?? { ...EMPTY_CARD };
-        if (countFilled(liveCard) < 4) {
-          liveCard = await extractCardFromConversation(requirementId).catch(() => liveCard);
+        // 卡片抽取依赖一次 getRequirement（SELECT requirements）。该读可能因连接池瞬时
+        // 耗尽 (EMAXCONNSESSION) 抛错——若在此硬失败，reply/card 都来不及下发，整轮对话
+        // 直接炸成致命错误横幅且无法自动消除。故整段包进 try/catch：读/抽失败仅跳过本次
+        // 卡片更新，reply 照常下发、done 照常结束；卡片稍后由前端 SWR 重新拉取或在下一轮补齐。
+        let liveCard: RequirementCard | null = null;
+        try {
+          // 【测试钩子，仅 FORCE_CONV_CARD_FAIL=1 时生效，生产无此变量即零副作用】
+          // 确定性复现「对话轮卡片抽取读库(SELECT requirements)瞬时失败」：在此处抛错，
+          // 验证整轮仍能下发 reply/done、前端错误横幅不再残留（这正是用户报的卡死场景）。
+          if (process.env.FORCE_CONV_CARD_FAIL === "1") {
+            throw new Error(
+              'exec-pgsql HTTP 400: {"code":"DATABASE_XX000","message":"(EMAXCONNSESSION) max clients reached in session mode - max clients are limited to pool_size: 10"}'
+            );
+          }
+          const cur = await getRequirement(requirementId);
+          const base = cur?.card ?? { ...EMPTY_CARD };
+          if (countFilled(base) < 4) {
+            liveCard = await extractCardFromConversation(requirementId).catch(() => base);
+          } else {
+            liveCard = base;
+          }
+          const filledFields = Object.values(liveCard).filter(
+            (v) => typeof v === "string" && v.trim().length >= 3 && !v.startsWith("（")
+          ).length;
+          if (filledFields >= 4) stepReady = true;
+        } catch (e) {
+          console.error(
+            "[conversation] 卡片抽取跳过（瞬时 DB 故障，不影响本轮 AI 回复）:",
+            e instanceof Error ? e.message : String(e)
+          );
         }
-        const cardValues = Object.values(liveCard || {});
-        const filledFields = cardValues.filter(
-          (v) => typeof v === "string" && v.trim().length >= 3 && !v.startsWith("（")
-        ).length;
-        if (filledFields >= 4) stepReady = true;
 
         // 修复空回复：模型可能仅输出卡片 JSON 无正文（reply 为空），
         // 落库的 finalReply 从未流式发出。此处以 reply 事件补发清理后的正式回复，
@@ -415,7 +461,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           encoder.encode(`event: reply\ndata: ${JSON.stringify(finalReply)}\n\n`)
         );
 
-        controller.enqueue(encoder.encode(`event: card\ndata: ${JSON.stringify(liveCard)}\n\n`));
+        // 卡片抽取成功才下发 card 事件；失败则不发，避免把右侧面板已填好的卡片清空。
+        if (liveCard) {
+          controller.enqueue(encoder.encode(`event: card\ndata: ${JSON.stringify(liveCard)}\n\n`));
+        }
 
         // 写库兜底：autoTitle / 阶段状态写入为非必要副作用，连接池耗尽(EMAXCONNSESSION)等
         // 瞬时故障不应让整条 SSE 流断裂。reply/card 已先发出，此处失败仅「阶段闸门未自动
@@ -480,9 +529,23 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         controller.enqueue(encoder.encode(`event: done\ndata: {}\n\n`));
       } catch (e) {
         const m = e instanceof Error ? e.message : String(e);
-        controller.enqueue(
-          encoder.encode(`event: error\ndata: ${JSON.stringify({ message: m })}\n\n`)
-        );
+        // 回复已下发后的瞬时 DB 故障（连接池耗尽等）：降级为可恢复错误并照常 done，
+        // 不让整条对话流变成致命横幅——用户已收到 AI 回复，仅本轮卡片/落库可能延迟，下轮补齐。
+        if (replySent && isTransientSqlError(e)) {
+          controller.enqueue(
+            encoder.encode(
+              `event: error\ndata: ${JSON.stringify({
+                message: "网络波动，本轮内容已生成，部分保存可能稍延迟，可继续对话",
+                recoverable: true,
+              })}\n\n`
+            )
+          );
+          controller.enqueue(encoder.encode(`event: done\ndata: {}\n\n`));
+        } else {
+          controller.enqueue(
+            encoder.encode(`event: error\ndata: ${JSON.stringify({ message: m })}\n\n`)
+          );
+        }
       } finally {
         controller.close();
       }

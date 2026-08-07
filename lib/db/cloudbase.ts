@@ -71,10 +71,11 @@ function assertConfig(): void {
 //      keep-alive 连接就占一个 SQL 会话槽，本机常驻的孤儿 dev server 即使空闲也会
 //      长期霸占几条 keep-alive 会话不释放，把 10 槽池占死。关掉 keep-alive 后，空闲
 //      进程占 0 槽，只有「在途」请求才占槽，跨进程竞争问题从根上消除。
-//  (2) 令牌桶把「单进程同时打向网关的 exec-pgsql 数」限制在 4（远低于 10），即便同机
-//      再开一个 dev server 各跑 4，合计 8 也留 2 槽余量，杜绝单进程内突发打满池。
+//  (2) 令牌桶把「单进程同时打向网关的 exec-pgsql 数」限制在 3（远低于 10），即便同机
+//      再开一个 dev server 各跑 3，合计 6 也留 4 槽余量给本环境其它消费者（其它实例/
+//      同环境其它应用/真人实时会话），杜绝单进程内突发打满池导致第三个用户被堵。
 // ---------------------------------------------------------------------------
-const MAX_CONCURRENT_SQL = 4;
+const MAX_CONCURRENT_SQL = 3;
 let _sqlActive = 0;
 const _sqlWaiters: Array<() => void> = [];
 function acquireSqlSlot(): Promise<void> {
@@ -93,7 +94,7 @@ function releaseSqlSlot(): void {
 }
 
 // 网关瞬时错误：连接池耗尽 / 限流 / 网关抖动等。这些应重试而非直接 500。
-function isTransientSqlError(err: unknown): boolean {
+export function isTransientSqlError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return /EMAXCONNSESSION|max clients reached|DATABASE_XX000|DATABASE_25006|429|503|ECONNRESET|ETIMEDOUT|socket hang up|timed out/i.test(
     msg
@@ -158,9 +159,9 @@ async function execPgSql<T = Row>(sqlText: string): Promise<T[]> {
   assertConfig();
   await acquireSqlSlot();
   try {
-    // 瞬时错误（连接池耗尽 / 限流 / 网关抖动）最多重试 5 次，指数退避 + 抖动。
+    // 瞬时错误（连接池耗尽 / 限流 / 网关抖动）最多重试 7 次，指数退避 + 抖动。
     // EMAXCONNSESSION 返回的是 HTTP 400（非 5xx），故重试判定靠错误体关键字，不靠状态码。
-    const MAX_ATTEMPTS = 5;
+    const MAX_ATTEMPTS = 7;
     let lastErr: unknown;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       try {

@@ -76,6 +76,8 @@ export function ConversationPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const hasSentRef = useRef(false);
+  // 可恢复错误（连接池瞬时耗尽等）的自动消失计时器；硬错误（AI 不可用等）不自动消失。
+  const errTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 复制反馈：当前已复制消息的 id（1.5s 后自动清除）
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
@@ -199,6 +201,8 @@ export function ConversationPanel({
               /* ignore */
             }
           } else if (event === "card") {
+            // 卡片成功回传说明 DB 此刻可达，清掉任何残留错误横幅
+            setError(null);
             try {
               onCardExtracted?.(JSON.parse(data) as Record<string, string>);
               // 刷新右侧卡片内容缓存，使最新提炼结果即时呈现
@@ -225,12 +229,26 @@ export function ConversationPanel({
             }
           } else if (event === "error") {
             try {
-              const e = JSON.parse(data) as { message?: string };
+              const e = JSON.parse(data) as { message?: string; recoverable?: boolean };
               setError(e.message || "对话出错");
+              if (e.recoverable) {
+                // 可恢复错误（连接池瞬时耗尽等）自动消失，不长期占用界面
+                if (errTimerRef.current) clearTimeout(errTimerRef.current);
+                errTimerRef.current = setTimeout(() => setError(null), 8000);
+              }
             } catch {
               setError("对话出错");
             }
+          } else if (event === "done") {
+            // 本轮正常结束：此前任何瞬时错误都已过时，清除横幅（避免「报错一直显示」）
+            if (errTimerRef.current) {
+              clearTimeout(errTimerRef.current);
+              errTimerRef.current = null;
+            }
+            setError(null);
           } else if (event === "step_update") {
+            // 进展类事件到达即视为本轮已推进成功，清掉残留错误横幅
+            setError(null);
             // 步骤状态变更：直接注入 SWR 缓存 + 拉取 outputs
             if (currentId) {
               try {
@@ -248,6 +266,8 @@ export function ConversationPanel({
             }
           } else if (event === "proceed_prompt") {
             // AI 提示进入下一步 → 转发给 shell 显示确认闸门双按钮（携带 nextStep/version/auto）
+            // 同时清掉残留错误横幅（进入下一阶段本身是成功推进）
+            setError(null);
             if (currentId) {
               try {
                 const payload = JSON.parse(data) as {
@@ -395,6 +415,13 @@ export function ConversationPanel({
     window.addEventListener(EVT.CHANGE_COMPLETE, handler);
     return () => window.removeEventListener(EVT.CHANGE_COMPLETE, handler);
   }, [rid]);
+
+  // 卸载时清理可恢复错误的自动消失计时器，避免对已卸载组件 setState
+  useEffect(() => {
+    return () => {
+      if (errTimerRef.current) clearTimeout(errTimerRef.current);
+    };
+  }, []);
 
   return (
     <div className="flex h-full flex-col bg-white">
