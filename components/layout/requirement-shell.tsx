@@ -396,10 +396,23 @@ export function RequirementShell({
         );
 
         // 该文档对应的变更点描述 → changeNote
-        const changeNote = changes
+        let changeNote = changes
           .filter((c) => c.output === item.output)
           .map((c) => `- ${c.field}：${c.description}`)
           .join("\n");
+
+        // 原型是方案设计的派生产物，change-analyzer 的输出物只有 card/research_analysis/design/prd
+        // 不会单独产出 prototype。这里若 prototype 任务的 changeNote 为空，
+        // 回退使用 design 的变更点（design 受影响 → 原型需同步更新），否则后端 isEdit 永远为
+        // false → 文案显示"已生成"且会发出推进用的 proceed_prompt 把顶部按钮翻成
+        // "原型已完成，确认后进入需求文档"，点击后又把已生成的需求文档再生成一遍
+        // （M1.3.7 未生效的根本原因）。
+        if (item.isPrototype && !changeNote) {
+          changeNote = changes
+            .filter((c) => c.output === "design")
+            .map((c) => `- ${c.field}：${c.description}`)
+            .join("\n");
+        }
 
         try {
           if (item.isPrototype) {

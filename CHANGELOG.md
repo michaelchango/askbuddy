@@ -170,3 +170,28 @@
   3. **`markdown-renderer.tsx`**：`mermaid` 改为动态 `import()`（需求详情首屏不再加载该大依赖）；`MermaidBlock` / `MarkdownRenderer` 包 `React.memo`，内容未变时不重复解析/重渲染（用 `Symbol` 标记替代易失效的 `.name` 判定）。
 - **验收**：`tsc --noEmit` 零错误。剩余"首屏慢"主要是本地 dev 按需编译，生产构建不含此开销。
 - **M2 建议（未做，记录）**：① 详情页 `project`/`siblings` 依赖 `req.projectId` 形成串行 waterfall，可并行或带 `fallbackData`；② 项目列表页为算"每项目需求数"一次性拉全量需求，后端应加聚合接口；③ 变更时的卡片抽取二次 LLM 调用是卡片更新慢的主因，可考虑小模型或本地规则抽取。
+
+## M1.3.9 — 变更场景修复未生效 + 原型文案重复出现的根因修复 (2026-08-08)
+
+- **用户实测反馈（M1.3.7 后再测试）**：
+  1. M1.3.7 修的变更场景原型文案与按钮翻转**完全没有修好**。
+  2. **首次生成和变更生成原型，文案都会显示两遍**（越改问题越多）。
+- **根因 A（M1.3.7 没生效的真因）**：`processChangeQueue` 里原型任务的 `changeNote` 取自 `changes.filter(c => c.output === item.output)`，而 `change-analyzer.ts` 的 `affectedOutputs` / `changes[].output` 只产出 `card / research_analysis / design / prd`，**从不产出 `prototype`**。所以原型任务的 `changeNote` 永远是空串，传到 `prototype-sse.ts` 后 `isEdit=false`，M1.3.7 的 `if (!isEdit)` 守卫根本不生效——按钮照样翻、文案照样显示"已生成"。
+  → 修复：`processChangeQueue` 里**原型任务的 `changeNote` 回退使用 `design` 的变更点**（原型是方案设计的派生产物，design 受影响 → 原型必须同步更新）。现在变更场景下 `isEdit=true`，按钮不翻、文案显示"已更新"，与 `design` / `prd` 路由的 `isFrontier` 行为对齐。
+- **根因 B（文案显示两遍）**：本地实测确认后端 `gen_message` 各路由（research-analysis / design / prd / prototype-sse）**每个事件只发一次**，前端每个 `EVT.GEN_MESSAGE` 监听器**每个派发只追加一次**（delta 测试 1 派发 = 1 气泡）。真正导致重复显示的组合是：
+  - **后端 `addMessage` 落库 + `gen_message` 事件追加**两条路径并存：同一条"原型已生成"既被服务端 `addMessage` 持久化（将来 SWR 重新拉取时会带回），又被 `gen_message` 事件即时追加；
+  - **消息 `id: Date.now()` 在快速连续追加时返回相同毫秒值**，造成 React 重复 key 警告，且在边缘场景下会让两条消息被同时渲染/对调。
+  → 修复（防御性 + 根因）：
+  1. **`conversation-panel.tsx`** 新增 `msgIdRef` 严格递增计数器（`nextMsgId()`），所有本地新增消息（用户消息、assistant 流式收尾、GEN_MESSAGE、CHANGE_COMPLETE）统一使用，**杜绝 `Date.now()` 毫秒碰撞导致的 React 重复 key**。
+  2. **`EVT.GEN_MESSAGE` 处理器**追加末尾内容去重：若最后一条已是相同内容的 assistant 消息则不再追加（覆盖"addMessage 落库 + event 追加"双路径、覆盖未来任何重复派发）。
+  3. **`EVT.CHANGE_COMPLETE` 处理器**同样追加末尾内容去重，避免变更总结被追加两次。
+  4. **其他 requirementId 的事件**：保持原有 `!== rid` 守卫不变（已通过测试 ④ 验证）。
+- **E2E 回归测试**（`scripts/test-prototype-dedup.cjs`，6/6 PASS）：
+  - ① 原型 normal 文案连发 2 次 → delta=1
+  - ② 原型 edit 文案连发 2 次 → delta=1
+  - ③ 全新文案发 1 次 → delta=1（确保不是"全部吞掉"）
+  - ④ 其他 requirementId 的事件 → delta=0（隔离守卫）
+  - ⑤ CHANGE_COMPLETE 连发 2 次 → delta=1
+  - ⑥ 双路径同内容（模拟 addMessage 落库 + event 追加）x2 → delta=1
+- **本地 dev 起服务实测流程**：`AI_MOCK=true next dev` 起服务 → 通过 Playwright 实测确认前端处理器每个派发只追加一次（`Date.now()` 碰撞 + addMessage/gen_message 双路径并存才是重复源头）。受沙箱无法连真实 CloudBase AI，prototype-sse 真实成功流程由本地真实凭证回归验证。
+- **验收**：`tsc --noEmit` 零错误，回归脚本 6/6 PASS。

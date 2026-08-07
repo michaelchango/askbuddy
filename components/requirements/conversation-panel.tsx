@@ -76,6 +76,14 @@ export function ConversationPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const hasSentRef = useRef(false);
+  // 消息 ID 严格递增计数器：避免 Date.now() 在快速连续追加时返回相同毫秒值
+  // 导致 React key 重复（"Encountered two children with the same key" 警告，
+  // 极端情况下也会让两条消息被渲染/对调）。所有本地新增消息 id 都走这里。
+  const msgIdRef = useRef(0);
+  function nextMsgId(): number {
+    msgIdRef.current += 1;
+    return msgIdRef.current;
+  }
   // 对话流并发控制：取消上一轮仍在后台读取的 SSE（文字已显示但卡片抽取等仍在跑），
   // 避免上一轮 done 的 finally 误把本轮 busy 解禁；同时用 sendId 判定"本轮是否仍是当前轮"。
   const convAbortRef = useRef<AbortController | null>(null);
@@ -165,7 +173,7 @@ export function ConversationPanel({
       }
 
       const userMsg: Msg = {
-        id: Date.now(),
+        id: nextMsgId(),
         role: "user",
         content: message,
         created_at: new Date().toISOString(),
@@ -346,7 +354,7 @@ export function ConversationPanel({
         setMessages((m) => [
           ...m,
           {
-            id: Date.now(),
+            id: nextMsgId(),
             role: "assistant",
             content: bubbleText,
             created_at: new Date().toISOString(),
@@ -383,15 +391,23 @@ export function ConversationPanel({
       const detail = (e as CustomEvent).detail as { content: string; requirementId?: string };
       if (detail.requirementId !== rid) return;
       if (!detail.content) return;
-      setMessages((m) => [
-        ...m,
-        {
-          id: Date.now(),
-          role: "assistant",
-          content: detail.content,
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      setMessages((m) => {
+        // 防御性去重：若最后一条助手消息内容完全相同（后端 addMessage 落库 +
+        // gen_message 事件双路径，或 SSE 解析/事件重复派发），不再追加第二条。
+        const last = m[m.length - 1];
+        if (last && last.role === "assistant" && last.content === detail.content) {
+          return m;
+        }
+        return [
+          ...m,
+          {
+            id: nextMsgId(),
+            role: "assistant",
+            content: detail.content,
+            created_at: new Date().toISOString(),
+          },
+        ];
+      });
     };
     window.addEventListener(EVT.GEN_MESSAGE, handler);
     return () => window.removeEventListener(EVT.GEN_MESSAGE, handler);
@@ -427,15 +443,21 @@ export function ConversationPanel({
       const updatedList = detail.affectedOutputs
         .map((s) => labels[s] ?? s)
         .join("、");
-      setMessages((m) => [
-        ...m,
-        {
-          id: Date.now(),
-          role: "assistant",
-          content: `✅ 变更已全部完成！已更新：${updatedList}。你可以在左侧边栏查看最新内容。`,
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      const summary = `✅ 变更已全部完成！已更新：${updatedList}。你可以在左侧边栏查看最新内容。`;
+      setMessages((m) => {
+        // 防御性去重：同一条变更总结若已被追加（重复派发），不重复追加
+        const last = m[m.length - 1];
+        if (last && last.role === "assistant" && last.content === summary) return m;
+        return [
+          ...m,
+          {
+            id: nextMsgId(),
+            role: "assistant",
+            content: summary,
+            created_at: new Date().toISOString(),
+          },
+        ];
+      });
     };
     window.addEventListener(EVT.CHANGE_COMPLETE, handler);
     return () => window.removeEventListener(EVT.CHANGE_COMPLETE, handler);
