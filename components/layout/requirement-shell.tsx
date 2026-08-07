@@ -736,6 +736,7 @@ export function RequirementShell({
             canSkip: detail.canSkip,
             message: detail.message ?? `是否进入「${STEP_LABELS[detail.step]}」阶段？`,
             version: detail.version,
+            subPhase: detail.subPhase,
           });
           return;
         }
@@ -745,6 +746,9 @@ export function RequirementShell({
           canSkip: detail.canSkip,
           message: detail.message ?? "",
           version: detail.version,
+          // 透传 subPhase：否则 handleProceed 会误把设计步骤当作普通 PATCH done 处理，
+          // 跳过原型子阶段直接标 design=done（不调 generatePrototype）
+          subPhase: detail.subPhase,
         });
         return;
       }
@@ -755,6 +759,7 @@ export function RequirementShell({
         canSkip: detail.canSkip,
         message: detail.message ?? `是否进入「${STEP_LABELS[detail.step]}」阶段？`,
         version: detail.version,
+        subPhase: detail.subPhase,
       });
     };
     window.addEventListener(EVT.PROCEED_PROMPT, handler);

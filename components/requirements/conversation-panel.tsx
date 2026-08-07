@@ -265,7 +265,7 @@ export function ConversationPanel({
                 .catch(() => {});
             }
           } else if (event === "proceed_prompt") {
-            // AI 提示进入下一步 → 转发给 shell 显示确认闸门双按钮（携带 nextStep/version/auto）
+            // AI 提示进入下一步 → 转发给 shell 显示确认闸门双按钮（携带 nextStep/version/auto/subPhase）
             // 同时清掉残留错误横幅（进入下一阶段本身是成功推进）
             setError(null);
             if (currentId) {
@@ -277,6 +277,7 @@ export function ConversationPanel({
                   message?: string;
                   version?: number;
                   auto?: boolean;
+                  subPhase?: string;
                 };
                 window.dispatchEvent(
                   new CustomEvent(EVT.PROCEED_PROMPT, {
@@ -288,6 +289,9 @@ export function ConversationPanel({
                       message: payload.message ?? "需求已明确，是否进入下一阶段？",
                       version: payload.version,
                       auto: payload.auto ?? false,
+                      // 透传 subPhase（设计阶段方案文档 → 原型子阶段的判定依据），
+                      // 否则 handleProceed 误把 subPhase 丢失为 undefined、走 PATCH done 路径
+                      subPhase: payload.subPhase,
                     },
                   })
                 );

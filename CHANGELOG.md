@@ -129,3 +129,20 @@
   3. **`handleProceed` 原型子阶段分支改为 `await + try/catch`**：生成失败时恢复 `pendingPrompt`（携带 `subPhase:"prototype"`）供顶部按钮重试 + dispatch `EVT.GEN_ERROR` 显示错误横幅（8s 自动消失）；AbortError 跳过不设重试。
 - **「对话脱轨」问题**：本次修复已从根本上解决——原型子阶段不再无声失败、流程不再中断，AUTO 分支对所有步骤（含 design→prototype 子阶段）的正确性得到保证。用户再发「开始原型设计」或「进入下一阶段」时，`isNavCommand` → AUTO 分支 → `subPhase:"prototype"` → `handleProceed → await generatePrototype` → 正确进入原型生成流程（或在失败时显示重试按钮）。
 - **验收**：`tsc --noEmit` 零错误。改动后方案设计→原型失败时用户立即看到：① 错误横幅「原型生成失败...」→ 8s 后消失；② 顶部按钮恢复为重试入口「原型生成失败，请点击上方按钮重试。」→ 点击即重试。
+
+## M1.3.6 — `subPhase` 字段在事件链丢失 + `isNavCommand` 漏识别「进入原型」修复 (2026-08-07)
+
+- **用户实测反馈（M1.3.5 后的现场复测）**：
+  1. 方案设计完成后对话发「进入原型设计」→ AI 兜底答「好的，收到」（500 兜底）。
+  2. 多次发「进入原型设计」都同上。
+  3. 改发「开始原型设计」→ AI 答「✅ 已确认方案文档，正在为您进入『原型设计（交互原型）』…」但**原型未实际生成**；设计步骤状态被错误地从「进行中」改为「已完成」；顶部的「确认后进入原型设计」按钮还一直在。
+- **根因 A（`subPhase` 在事件链丢失）**：AUTO 分支正确判断出 `subPhase:"prototype"` 并下发 SSE `proceed_prompt`，但 `conversation-panel.tsx`（行 282-291）分发 `EVT.PROCEED_PROMPT` 时**未把 `subPhase` 塞进 detail**；`requirement-shell.tsx`（行 720-762）处理器也**未从 detail 提取 `subPhase`**传给 `handleProceed`。结果 `handleProceed` 收到的 `subPhase` 永远是 `undefined`，不进入子阶段分支，**直接走 `PATCH step:'design', state:'done'` + 因 nextStep 为 null 不生成任何东西**——把 design 步骤错误标完成且跳过了原型生成。`subPhase` 在 design 路由走 handleGenerate SSE 路径时是正确传递的（`handleGenerate` 的 `setPendingPrompt` 已带 subPhase），所以顶部按钮原本就是对的。
+- **根因 B（`isNavCommand` 漏识别「进入原型设计」）**：现有正则 `/进入下一(步|阶段|环节)/` 和 `/(开始|进行|做|生成|...).*(调研|...|原型|...)/i` **都未覆盖「进入原型设计」「进入原型」这种「进入特定子阶段」指令**。「进入原型设计」→ 不匹配 → 落入 STREAM 分支 → AI 模型被模糊指令迷惑 → 返回空回复 → 兜底「好的，收到」。
+- **修复（三处）**：
+  1. **`conversation-panel.tsx`**：分发 `EVT.PROCEED_PROMPT` 时**透传 `payload.subPhase`**，并在 TS 类型接口中加 `subPhase?: string`。
+  2. **`requirement-shell.tsx`**：处理器从 `detail.subPhase` 提取，三处 `setPendingPrompt` / `handleProceed` 调用都带上 `subPhase`（包括 `generatingStepRef.current` 降级分支），否则会被静默丢弃。
+  3. **`app/api/requirements/[id]/conversation/route.ts` 的 `isNavCommand`**：新增正则 `/进入(原型设计|原型|调研分析|调研|方案设计|方案|需求文档|prd|调研报告)/i`，命中即视为导航指令走 AUTO 分支。
+- **验收**：`tsc --noEmit` 零错误。修复后用户测试场景：
+  - 「进入原型设计」/`「开始原型设计」` → `isNavCommand` 命中 → AUTO 分支正确判断 `subPhase:"prototype"` → 经完整事件链传到 `handleProceed` → 进入子阶段分支 → `await generatePrototype` → 原型正常生成或失败时显示重试按钮。
+  - design 步骤**不再被错误地提前标为 done**。
+- **是否要拆分 5 步**：本次修复后，4 步模型的子阶段链路已完整打通（subPhase 正确传递、错误处理已对齐）。**在踩到更多子阶段相关 bug 之前，建议先保留 4 步方案**——这次的 bug 根因是事件链字段丢失（属于可定位的硬错误），不是 4 步模型的本质缺陷。
