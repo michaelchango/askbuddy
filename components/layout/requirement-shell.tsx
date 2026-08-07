@@ -475,8 +475,29 @@ export function RequirementShell({
       setPendingPrompt(null);
       setDesignSubPhase("prototype");
       setSelected({ type: "design", subType: "prototype" });
-      // 自动根据方案设计生成原型（无需手动点击生成按钮）
-      void generatePrototypeRef.current?.();
+      // 自动根据方案设计生成原型（需 await + catch：原型生成失败时回退 pendingPrompt 供重试）
+      try {
+        await generatePrototypeRef.current?.();
+      } catch (e) {
+        // AbortError = 用户主动中止，不设重试入口
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        const errMsg = e instanceof Error ? e.message : String(e);
+        console.error("原型自动生成失败:", errMsg);
+        // 失败后退化为 pendingPrompt（携带 subPhase:"prototype"），让用户通过顶部按钮重试
+        setPendingPrompt({
+          step,
+          nextStep,
+          canSkip: false,
+          message: `原型生成失败（${errMsg.slice(0, 80)}），请点击上方按钮重试。`,
+          version,
+          subPhase,
+        });
+        window.dispatchEvent(
+          new CustomEvent(EVT.GEN_ERROR, {
+            detail: { requirementId, step: "prototype" as StepName, message: errMsg },
+          })
+        );
+      }
       return;
     }
     // 仅当 promptArg 未传入时清空 state（自动推进路径无 pendingPrompt 可清）
@@ -633,6 +654,14 @@ export function RequirementShell({
               } catch {
                 /* ignore */
               }
+            } else if (eventType === "error") {
+              // 后端原型流水线异常：中断 SSE 读取，抛错给外层 catch
+              let msg = "原型生成异常";
+              try {
+                const edata = JSON.parse(raw) as { message?: string };
+                if (edata.message) msg = edata.message;
+              } catch { /* parse 失败用默认 msg */ }
+              throw new Error(msg);
             }
             cursor = dataEnd + 2;
           }
@@ -662,6 +691,8 @@ export function RequirementShell({
         if (!(e instanceof DOMException && e.name === "AbortError")) {
           console.error("原型生成失败:", e);
         }
+        // re-throw 让调用方（handleProceed / processChangeQueue）能捕获并设重试入口
+        throw e;
       } finally {
         genAbortRef.current = null;
         setGeneratingStep(null);

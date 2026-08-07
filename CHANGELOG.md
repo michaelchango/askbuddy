@@ -118,3 +118,14 @@
   3. **`handleProceed` 中 `await handleGenerate` + 失败回退**：生成失败后**设置 `pendingPrompt`**（与正常 `proceed_prompt` 行为一致），用户可通过顶部按钮重试；同时 dispatch `EVT.GEN_ERROR` 通知对话面板显示可恢复错误横幅（8s 自动消失）。AbortError（用户主动取消）则跳过、不设重试入口。
 - **新增事件常量** `EVT.GEN_ERROR = "askbuddy:gen-error"`（`lib/events.ts`）：`requirement-shell` 下发 → `conversation-panel` 监听并设置 `setError`（含 8s 自动消失）。
 - **验收**：`tsc --noEmit` 零错误。逻辑上，生成失败后用户会立即看到：① 错误横幅（8s 后消失）；② 顶部出现「生成失败，请点击上方按钮重试」确认按钮——点击即重试同一对（步→下一步），等效正常 proceed_prompt 流程。
+
+## M1.3.5 — 原型子阶段 fire-and-forget 导致方案设计→原型失败 + 对话脱轨修复 (2026-08-07)
+
+- **用户实测反馈**：方案设计完成后对话发「进入下一阶段」→ AI 回答「✅ 已确认方案文档，正在进入原型设计」但**原型未实际生成、右侧栏无更新**；再发一次「进入下一阶段」→ 500 兜底「好的，收到」；顶部按钮文案异常。同时，流程中断后 AI 对话脱轨——再发「开始原型设计」不走平台预设原型步骤，变成纯 AI 聊天。
+- **根因**：M1.3.4 只修了 `handleProceed → handleGenerate` 的 fire-and-forget，漏了**原型子阶段分支**（`subPhase === "prototype"`）里的 `generatePrototypeRef.current?.()` ——同样是 `void` 调用不 await，且 `generatePrototype` 自身也不 re-throw。原型生成 API 因 EMAXCONNSESSION 等瞬时故障失败时，错误被双层静默吞掉。`handleProceed` 提前 `setPendingPrompt(null)` 清空了按钮、但失败后未恢复，用户陷于「无按钮、无原型、无报错」三无状态。流程中断后 design 仍为 in_progress，但后续「进入下一阶段」走 AUTO 分支 → 同一 subPhase 路径 → 同一无声失败，导致用户感觉「脱轨」。
+- **修复（`requirement-shell.tsx`，与方法 M1.3.4 完全对齐）**：
+  1. **`generatePrototype` SSE 解析新增 `error` 事件处理**：后端原型流水线异常时中断 SSE 读取并抛 `Error(msg)`，不再静默跳过。
+  2. **`generatePrototype` catch 改为 re-throw**：让 `handleProceed` / `processChangeQueue` 能捕获并做降级（`processChangeQueue` 已有 try/catch，不受影响）。
+  3. **`handleProceed` 原型子阶段分支改为 `await + try/catch`**：生成失败时恢复 `pendingPrompt`（携带 `subPhase:"prototype"`）供顶部按钮重试 + dispatch `EVT.GEN_ERROR` 显示错误横幅（8s 自动消失）；AbortError 跳过不设重试。
+- **「对话脱轨」问题**：本次修复已从根本上解决——原型子阶段不再无声失败、流程不再中断，AUTO 分支对所有步骤（含 design→prototype 子阶段）的正确性得到保证。用户再发「开始原型设计」或「进入下一阶段」时，`isNavCommand` → AUTO 分支 → `subPhase:"prototype"` → `handleProceed → await generatePrototype` → 正确进入原型生成流程（或在失败时显示重试按钮）。
+- **验收**：`tsc --noEmit` 零错误。改动后方案设计→原型失败时用户立即看到：① 错误横幅「原型生成失败...」→ 8s 后消失；② 顶部按钮恢复为重试入口「原型生成失败，请点击上方按钮重试。」→ 点击即重试。
