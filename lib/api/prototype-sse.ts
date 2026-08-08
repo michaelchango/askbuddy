@@ -42,9 +42,11 @@ export async function prototypeSSE(
           opts.baseVersionId
         );
 
+        // 文案格式与其他文档（设计/PRD/调研）的已更新/已生成一致：
+        // 变更/编辑模式 → 简短"已更新"结尾；首次生成模式 → 提示在阶段栏确认后进入下一阶段
         const genMessage = isEdit
-          ? "✅ 原型已更新，可继续修改，或在上方阶段栏确认后进入下一阶段。"
-          : "✅ 原型已生成，可继续修改，或在上方阶段栏确认后进入下一阶段。";
+          ? "✅ 原型已更新。"
+          : "✅ 原型已生成，请在上方的阶段栏确认后进入下一阶段。";
         await addMessage(requirementId, "assistant", genMessage).catch(() => {});
         // 生成（或更新）原型即视为需求的一次更新，刷新「最近更新」时间
         await touchRequirement(requirementId).catch(() => {});
