@@ -401,17 +401,23 @@ export function RequirementShell({
           .map((c) => `- ${c.field}：${c.description}`)
           .join("\n");
 
-        // 原型是方案设计的派生产物，change-analyzer 的输出物只有 card/research_analysis/design/prd
-        // 不会单独产出 prototype。这里若 prototype 任务的 changeNote 为空，
-        // 回退使用 design 的变更点（design 受影响 → 原型需同步更新），否则后端 isEdit 永远为
-        // false → 文案显示"已生成"且会发出推进用的 proceed_prompt 把顶部按钮翻成
-        // "原型已完成，确认后进入需求文档"，点击后又把已生成的需求文档再生成一遍
-        // （M1.3.7 未生效的根本原因）。
-        if (item.isPrototype && !changeNote) {
-          changeNote = changes
-            .filter((c) => c.output === "design")
-            .map((c) => `- ${c.field}：${c.description}`)
-            .join("\n");
+        if (item.isPrototype) {
+          // 原型是方案设计的派生产物：优先取 design 的变更点作为精准修改指令。
+          // —— 但 change-analyzer 的输出物只有 card/research_analysis/design/prd，
+          //   从不产出 prototype，所以第一行的过滤永远是空。
+          // —— 更糟的是：change-analyzer 可能返回 affectedOutputs 含 design 但 changes
+          //   为空（AI 没给具体变更点），那时仅靠 design 过滤也是空 → changeNote 仍是空串
+          //   → prototype-sse 的 isEdit=false → 按钮翻、文案"已生成"。
+          // —— 必须**始终**保证原型任务的 changeNote 非空，否则 isEdit 永远判定为 false，
+          //   把"变更/编辑"误判成"首次生成"，推进闸门照发。
+          const designChanges = changes.filter((c) => c.output === "design");
+          if (designChanges.length > 0) {
+            changeNote = designChanges
+              .map((c) => `- ${c.field}：${c.description}`)
+              .join("\n");
+          } else {
+            changeNote = `同步更新原型以反映${affectedOutputs.join("、")}的最新内容`;
+          }
         }
 
         try {

@@ -195,3 +195,14 @@
   - ⑥ 双路径同内容（模拟 addMessage 落库 + event 追加）x2 → delta=1
 - **本地 dev 起服务实测流程**：`AI_MOCK=true next dev` 起服务 → 通过 Playwright 实测确认前端处理器每个派发只追加一次（`Date.now()` 碰撞 + addMessage/gen_message 双路径并存才是重复源头）。受沙箱无法连真实 CloudBase AI，prototype-sse 真实成功流程由本地真实凭证回归验证。
 - **验收**：`tsc --noEmit` 零错误，回归脚本 6/6 PASS。
+
+## M1.3.10 — M1.3.9 changeNote 兜底仍漏一类边界场景的修复 (2026-08-08)
+
+- **用户实测反馈（M1.3.9 后再测）**："只有显示两遍文案的问题修好了。文案没改，顶部按钮也不对。"
+- **根因**：M1.3.9 的 fallback `changes.filter(c => c.output === "design")` 在 **change-analyzer 返回 `affectedOutputs: ["design", "prd"]` 但 `changes` 为空数组**（AI 没给具体变更点描述，只给了输出列表）时仍然产出空 `changeNote` → `isEdit=false` → 按钮照翻、文案照"已生成"。
+- **修复**（`requirement-shell.tsx`）：原型任务的 `changeNote` 兜底改为**始终非空**——优先用 design 具体变更点；若 `designChanges.length === 0` 则用受影响输出列表合成非空占位（`同步更新原型以反映${affectedOutputs.join("、")}的最新内容`）。无论 AI 是否给具体变更描述，原型任务 `changeNote` 永远非空 → `isEdit` 永远 `true` → 按钮不翻、文案"已更新"。
+- **E2E 回归脚本**（`scripts/test-changenote-fallback.cjs`，2/2 PASS）：
+  - Case A（changes 含 design 具体变更点）→ 拦截 `/api/.../prototype` POST body，`changeNote="- 架构：改用微服务"` ✓
+  - Case B（affectedOutputs 含 design 但 changes 为空）→ 拦截 POST body，`changeNote="同步更新原型以反映design、prd的最新内容"` ✓
+- **可能原因排查**：M1.3.9 修复理论上已生效，但用户测仍报错也可能受浏览器 JS 缓存影响（Next.js dev HMR + 重启服务后需要 hard refresh `Ctrl+Shift+R`）。
+- **验收**：`tsc --noEmit` 零错误，回归脚本 2/2 PASS。
