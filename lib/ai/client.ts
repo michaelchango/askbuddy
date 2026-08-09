@@ -25,12 +25,12 @@ function pickModel(taskType: AITaskType): string {
 // ---------- 真实模式（CloudBase Node SDK） ----------
 // 通过流式 textStream 聚合文本：思考模型的推理链由 SDK 单独处理，textStream 仅返回最终答案，
 // 避免 generateText().text 把 <think> 思考链混入正文（标题/PRD 等生成结果）。
-async function streamToText(taskType: AITaskType, messages: ChatMessage[]): Promise<AIResult> {
+async function streamToText(taskType: AITaskType, messages: ChatMessage[], signal?: AbortSignal): Promise<AIResult> {
   const ai = getCloudAI();
   const model = ai.createModel("cloudbase");
   const modelName = pickModel(taskType);
   try {
-    const res = await model.streamText({ model: modelName, messages });
+    const res = await model.streamText({ model: modelName, messages, ...(signal ? { signal } : {}) });
     let text = "";
     for await (const chunk of res.textStream) {
       if (chunk) text += chunk;
@@ -40,7 +40,7 @@ async function streamToText(taskType: AITaskType, messages: ChatMessage[]): Prom
     const alt = DEGRADE[taskType];
     if (alt) {
       const altName = pickModel(alt);
-      const res2 = await model.streamText({ model: altName, messages });
+      const res2 = await model.streamText({ model: altName, messages, ...(signal ? { signal } : {}) });
       let text = "";
       for await (const chunk of res2.textStream) {
         if (chunk) text += chunk;
@@ -51,8 +51,8 @@ async function streamToText(taskType: AITaskType, messages: ChatMessage[]): Prom
   }
 }
 
-async function realGenerate(taskType: AITaskType, messages: ChatMessage[]): Promise<AIResult> {
-  return streamToText(taskType, messages);
+async function realGenerate(taskType: AITaskType, messages: ChatMessage[], signal?: AbortSignal): Promise<AIResult> {
+  return streamToText(taskType, messages, signal);
 }
 
 async function* realStream(taskType: AITaskType, messages: ChatMessage[]): AsyncGenerator<string> {
@@ -120,10 +120,65 @@ function mockResearchAnalysis(userMessage: string): string {
 \`\`\``;
 }
 
+function mockDevContext(): string {
+  // 占位但仍合法的 DevContext 内容段（顶层只含 16 个内容 section，不含 meta/references）。
+  const body = {
+    objective: {
+      problem_statement: "（示例）用户在移动端快速记录灵感但缺乏结构化整理。",
+      goal: "提供零门槛的极简记录 + 自动归类。",
+      success_metrics: [{ metric: "次日留存", target: "≥35%", baseline: "—" }],
+      _source: { context_ids: ["card.painPoints"], decision_id: null, knowledge_ids: [], conversation_turn: null, confirmed_by: "ai_auto", confirmed_at: null },
+    },
+    scope: {
+      in_scope: ["灵感速记", "标签归类"],
+      out_of_scope: ["团队协作"],
+      _source: { context_ids: ["card.scope"], decision_id: null, knowledge_ids: [], conversation_turn: null, confirmed_by: "ai_auto", confirmed_at: null },
+    },
+    business_rules: [
+      { id: "BR-001", statement: "单条灵感最长 280 字", formal: { when: "用户保存灵感", then: "若长度>280 则截断并提示" }, priority: "P1", source_refs: [], _source: { context_ids: [], decision_id: null, knowledge_ids: [], conversation_turn: null, confirmed_by: "ai_auto", confirmed_at: null } },
+    ],
+    user_scenarios: {
+      primary: [
+        { id: "SC-001", actor: "用户", steps: ["打开应用", "点击速记", "输入并保存"], expected: "灵感出现在首页时间线", _source: { context_ids: [], decision_id: null, knowledge_ids: [], conversation_turn: null, confirmed_by: "ai_auto", confirmed_at: null } },
+      ],
+    },
+    feature_logic: [
+      { id: "F-001", name: "灵感速记", description: "极简输入框保存灵感", happy_path: ["点击 +", "输入", "保存"], entity_refs: ["Note"], rule_refs: ["BR-001"], _source: { context_ids: [], decision_id: null, knowledge_ids: [], conversation_turn: null, confirmed_by: "ai_auto", confirmed_at: null } },
+    ],
+    data_structures: {
+      entities: [
+        { name: "Note", description: "用户灵感", fields: [{ name: "id", type: "uuid", required: true }, { name: "content", type: "string", required: true, constraints: "<=280" }, { name: "tags", type: "string[]", required: false }], _source: { context_ids: [], decision_id: null, knowledge_ids: [], conversation_turn: null, confirmed_by: "ai_auto", confirmed_at: null } },
+      ],
+    },
+    acceptance_criteria: [
+      { id: "AC-001", given: "用户已登录", when: "保存一条短于 280 字的灵感", then: "灵感出现在首页时间线", maps_to: ["BR-001", "F-001"], category: "functional", _source: { context_ids: [], decision_id: null, knowledge_ids: [], conversation_turn: null, confirmed_by: "ai_auto", confirmed_at: null } },
+    ],
+    edge_cases: {
+      boundary: [
+        { id: "EC-001", scenario: "灵感恰好 280 字", handling: "允许保存", refs: ["BR-001"], _source: { context_ids: [], decision_id: null, knowledge_ids: [], conversation_turn: null, confirmed_by: "ai_auto", confirmed_at: null } },
+      ],
+    },
+    non_functional_requirements: {
+      performance: [{ requirement: "保存 P95 延迟 ≤ 200ms", metric: "P95 latency", _source: { context_ids: [], decision_id: null, knowledge_ids: [], conversation_turn: null, confirmed_by: "ai_auto", confirmed_at: null } }],
+    },
+    test_cases: [
+      { id: "TC-001", title: "保存正常灵感", steps: ["输入 100 字", "保存"], expected: "保存成功并展示", maps_to: ["AC-001"], type: "functional", _source: { context_ids: [], decision_id: null, knowledge_ids: [], conversation_turn: null, confirmed_by: "ai_auto", confirmed_at: null } },
+    ],
+    metrics_analytics: {
+      events: [{ name: "note_created", description: "灵感创建" }],
+      _source: { context_ids: [], decision_id: null, knowledge_ids: [], conversation_turn: null, confirmed_by: "ai_auto", confirmed_at: null },
+    },
+    glossary: [{ term: "灵感", definition: "用户的一次轻量记录" }],
+    open_questions: [{ id: "Q-001", question: "是否需要离线保存？", context: "弱网场景" }],
+  };
+  return "```json\n" + JSON.stringify(body, null, 2) + "\n```";
+}
+
 function mockText(taskType: AITaskType, messages: ChatMessage[]): string {
   const lastUser = [...messages].reverse().find((m) => m.role === "user");
   if (taskType === "dialoguing") return mockDialogueText(lastUser?.content ?? "");
   if (taskType === "research_analysis") return mockResearchAnalysis(lastUser?.content ?? "");
+  if (taskType === "devcontext") return mockDevContext();
   return `[MOCK:${pickModel(taskType)}] 占位输出：${(lastUser?.content ?? "").slice(0, 40)}`;
 }
 
@@ -137,9 +192,9 @@ async function* mockStream(taskType: AITaskType, messages: ChatMessage[]): Async
 }
 
 // ---------- 对外接口 ----------
-export async function callAI(taskType: AITaskType, messages: ChatMessage[]): Promise<AIResult> {
+export async function callAI(taskType: AITaskType, messages: ChatMessage[], signal?: AbortSignal): Promise<AIResult> {
   if (aiUseMock()) return { model: pickModel(taskType), content: mockText(taskType, messages) };
-  return realGenerate(taskType, messages);
+  return realGenerate(taskType, messages, signal);
 }
 
 // 流式生成：返回文本块流（ReadableStream<string>），供 SSE 边生成边推送。

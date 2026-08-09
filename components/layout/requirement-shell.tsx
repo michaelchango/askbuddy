@@ -11,6 +11,7 @@ import {
 } from "@/components/layout/dashboard-shell";
 import { OutputSidebar } from "@/components/requirements/output-sidebar";
 import { OutputViewer } from "@/components/requirements/output-viewer";
+import { DevContextPanel } from "@/components/requirements/devcontext-panel";
 import StepNavigator from "@/components/requirements/step-navigator";
 import { WorkflowContext, type WorkflowState, type PendingPrompt, type ChangeTask } from "@/components/requirements/workflow-context";
 import type { OutputMeta, OutputType } from "@/lib/services/outputs";
@@ -109,6 +110,9 @@ export function RequirementShell({
   // 当前文档生成流的 AbortController，组件卸载时中止后台 SSE，避免已离开页面仍在派发事件
   const genAbortRef = useRef<AbortController | null>(null);
   const [generationContent, setGenerationContent] = useState("");
+  // DevContext 后台异步生成中的标记（PRD done 后置 true，面板轮询命中内容后置 false）。
+  const [devContextPending, setDevContextPending] = useState(false);
+  const clearDevContextPending = useCallback(() => setDevContextPending(false), []);
   const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null);
   // 变更更新任务队列
   const [changeTasks, setChangeTasks] = useState<ChangeTask[]>([]);
@@ -251,6 +255,14 @@ export function RequirementShell({
                 const steps = JSON.parse(raw);
                 globalMutate(`/api/requirements/${requirementId}/steps`, steps, false);
               } catch { /* ignore */ }
+            } else if (eventType === "devcontext_update") {
+              // PRD 落库后 DevContext 在后台异步生成：置 pending 让面板显示「生成中」，
+              // 并立即触发一次面板 refetch（SWR 设了 revalidateOnFocus:false，需显式 mutate）。
+              try {
+                const payload = JSON.parse(raw) as { version?: number | null; pending?: boolean };
+                setDevContextPending(!!payload?.pending && !payload?.version);
+              } catch { /* ignore */ }
+              globalMutate(`/api/requirements/${requirementId}/dev-context`);
             } else if (eventType === "proceed_prompt") {
               // 后端下发确认闸门：记录待用户确认的当前阶段与下一阶段（仅 normal 模式下发）
               try {
@@ -337,7 +349,8 @@ export function RequirementShell({
   const processChangeQueue = useCallback(
     async (
       affectedOutputs: string[],
-      changes: Array<{ output: string; field: string; description: string }> = []
+      changes: Array<{ output: string; field: string; description: string }> = [],
+      dcRegen: boolean = false
     ) => {
       // 输出物类型 → 步骤名映射
       const outputToStep: Record<string, StepName> = {
@@ -370,14 +383,19 @@ export function RequirementShell({
       const hasPrototypeTask =
         prototypeExists && stepsToRegen.some((x) => x.output === "design");
 
-      // 统一任务队列：文档步骤 + （可选）原型重生成
+      // 统一任务队列：文档步骤 + （可选）原型重生成。
+      // 【M2 修】原型任务必须紧跟 design 之后、prd 之前插入，而非 push 到队尾。
+      // 原因：prd 重生成完成时会以 prd_writing 触发 DevContext 后台生成（重 ~60~120s，
+      // 占满 hy3-preview 配额 + DB 连接）。若原型在 prd 之后才跑，DC 会与原型同时抢资源
+      // 直接 500（被队列兜底重试才最终成功）。首次生成顺序本就是 design→原型→prd，
+      // 这里对齐首次路径，让 prd 触发 DC 时原型已经跑完，DC 独占资源。
       type QueueItem = { output: string; isPrototype: boolean };
-      const queue: QueueItem[] = stepsToRegen.map((x) => ({
-        output: x.output,
-        isPrototype: false,
-      }));
-      if (hasPrototypeTask) {
-        queue.push({ output: "prototype", isPrototype: true });
+      const queue: QueueItem[] = [];
+      for (const x of stepsToRegen) {
+        queue.push({ output: x.output, isPrototype: false });
+        if (hasPrototypeTask && x.output === "design") {
+          queue.push({ output: "prototype", isPrototype: true });
+        }
       }
 
       // 初始化任务队列（用于展示）
@@ -441,6 +459,21 @@ export function RequirementShell({
         }
       }
 
+      // M2：变更波及 DC 上游（不含 prd）时，前端在重生成队列（含 prototype）排空后再触发
+      // DC 再生成（change_analysis），避免 DC 与 design/prototype 重生成同时抢 hy3-preview
+      // 配额 + DB 连接导致 500（与首次生成路径一致：design→原型→prd 之后 DC 才独占资源）。
+      if (dcRegen) {
+        try {
+          await fetch(`/api/requirements/${requirementId}/dev-context`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ trigger: "change_analysis" }),
+          });
+        } catch (e) {
+          console.error(`[devcontext] requirement=${requirementId} change_analysis 前端触发失败：`, e);
+        }
+      }
+
       // 全部完成 → 延迟 1.5s 后清空队列，让用户体验到"全部完成"
       setTimeout(() => setChangeTasks([]), 1500);
 
@@ -471,10 +504,11 @@ export function RequirementShell({
         affectedOutputs: string[];
         changes: Array<{ output: string; field: string; description: string }>;
         summary: string;
+        dcRegen?: boolean;
       };
       if (detail.requirementId !== requirementId) return;
-      // 自动开始变更更新流程（携带各文档变更点，用于精准重生成）
-      processChangeQueue(detail.affectedOutputs, detail.changes ?? []);
+      // 自动开始变更更新流程（携带各文档变更点，用于精准重生成；dcRegen 表示队列排空后触发 DC）
+      processChangeQueue(detail.affectedOutputs, detail.changes ?? [], detail.dcRegen === true);
     };
     window.addEventListener(EVT.CHANGE_UPDATE, handler);
     return () => window.removeEventListener(EVT.CHANGE_UPDATE, handler);
@@ -972,8 +1006,8 @@ export function RequirementShell({
                 className={cn(
                   "bg-white",
                   expanded
-                    ? "absolute bottom-0 left-[252px] right-0 top-0 z-20 shadow-xl"
-                    : "relative z-10 shrink-0 border-l border-black/10"
+                    ? "absolute bottom-0 left-[252px] right-0 top-0 z-20 flex flex-col shadow-xl"
+                    : "relative z-10 flex shrink-0 flex-col border-l border-black/10"
                 )}
               >
                 {!expanded && (
@@ -982,21 +1016,31 @@ export function RequirementShell({
                     className="absolute left-0 top-0 z-20 h-full w-1.5 -translate-x-1/2 cursor-col-resize bg-transparent hover:bg-[#f6661233]"
                   />
                 )}
-                <OutputViewer
-                  requirementId={requirementId}
-                  outputType={selected.type}
-                  subType={selected.subType}
-                  expanded={expanded}
-                  onToggleExpand={() => setExpanded((v) => !v)}
-                  onClose={handleClose}
-                  generating={generatingStep !== null && generatingStep === stepFromOutput(selected.type)}
-                  liveContent={generatingStep !== null && generatingStep === stepFromOutput(selected.type) ? generationContent : ""}
-                  liveHtml={
-                    generatingStep === "design" && designSubPhase === "prototype"
-                      ? generationContent
-                      : undefined
-                  }
-                />
+                <div className="min-h-0 flex-1">
+                  <OutputViewer
+                    requirementId={requirementId}
+                    outputType={selected.type}
+                    subType={selected.subType}
+                    expanded={expanded}
+                    onToggleExpand={() => setExpanded((v) => !v)}
+                    onClose={handleClose}
+                    generating={generatingStep !== null && generatingStep === stepFromOutput(selected.type)}
+                    liveContent={generatingStep !== null && generatingStep === stepFromOutput(selected.type) ? generationContent : ""}
+                    liveHtml={
+                      generatingStep === "design" && designSubPhase === "prototype"
+                        ? generationContent
+                        : undefined
+                    }
+                  />
+                </div>
+                {/* M2：PRD 视图底部挂载「开发上下文」折叠面板 */}
+                {selected.type === "prd" && (
+                  <DevContextPanel
+                    requirementId={requirementId}
+                    pending={devContextPending}
+                    onReady={clearDevContextPending}
+                  />
+                )}
               </div>
             )}
           </div>

@@ -74,8 +74,12 @@ function assertConfig(): void {
 //  (2) 令牌桶把「单进程同时打向网关的 exec-pgsql 数」限制在 3（远低于 10），即便同机
 //      再开一个 dev server 各跑 3，合计 6 也留 4 槽余量给本环境其它消费者（其它实例/
 //      同环境其它应用/真人实时会话），杜绝单进程内突发打满池导致第三个用户被堵。
+//
+// 实际看：单页打开的扇出常达 10+ 条 SQL，3 槽下排队把所有人拖死 → 客户端表现为
+// 偶发 EMAXCONNSESSION（500）。配合下方「in-flight SQL 去重」+ 下一条注释的
+// 「同 SQL 复用 in-flight Promise」，单实例单需求场景下从 16 SQL 扇出降到 3~5 SQL。
 // ---------------------------------------------------------------------------
-const MAX_CONCURRENT_SQL = 3;
+const MAX_CONCURRENT_SQL = 5; // 提到 5，留 5 槽余量给同 env 其它消费方
 let _sqlActive = 0;
 const _sqlWaiters: Array<() => void> = [];
 function acquireSqlSlot(): Promise<void> {
@@ -91,6 +95,60 @@ function releaseSqlSlot(): void {
     _sqlActive++;
     _sqlWaiters.shift()!();
   }
+}
+
+// ---------------------------------------------------------------------------
+// In-flight SQL 去重（关键杠杆 P0）
+//
+// 同一 SQL 字符串在同一时刻如果已在飞（请求已发出、尚未返回），后续所有调用
+// 共享这次返回，不再新发请求。典型场景：
+//   - 单页打开时 `outputs/prd` 与 `outputs/card` 同时被拉，两个 route 都查
+//     `prds` / `cards`，但代码路径未必同一 key——SQL 字符串完全一致时直接复用。
+//   - React StrictMode 双渲染 / 同 SWR key 短窗口内两次 mutate。
+//
+// 实现：Map<sqlText, Promise<T[]>>，命中返回同一个 Promise（所有 then 共用），
+// finally 时删除。注意：同一 SQL 在 5 分钟内不重复执行（业务层 SELECT 是幂等的）；
+// 不同 SQL 即使语义等价（如 `SELECT * FROM x WHERE id=1` 与 `SELECT id FROM x WHERE id=1`）
+// 不会合并（字符串不同），避免误吞结果。
+// ---------------------------------------------------------------------------
+/**
+ * in-flight SQL 去重 + 并发栅栏 + 瞬时错误重试（三层防御合一）。
+ * 同一 SQL 字符串在同一时刻只发一次请求，所有 caller 共享同一 Promise。
+ */
+async function execPgSqlSharedInner<T = Row>(sqlText: string): Promise<T[]> {
+  assertConfig();
+  await acquireSqlSlot();
+  try {
+    // 瞬时错误（连接池耗尽 / 限流 / 网关抖动）最多重试 7 次，指数退避 + 抖动。
+    // EMAXCONNSESSION 返回的是 HTTP 400（非 5xx），故重试判定靠错误体关键字，不靠状态码。
+    const MAX_ATTEMPTS = 7;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      try {
+        return await execPgSqlOnce<T>(sqlText);
+      } catch (e) {
+        lastErr = e;
+        // 仅对瞬时的连接池/网关类错误重试；业务错误（如字段契约漂移、SQL 语法错）
+        // 立即抛出，避免掩盖真实问题。
+        if (!isTransientSqlError(e)) break;
+        if (attempt < MAX_ATTEMPTS - 1) {
+          await sleepMs(150 * Math.pow(2, attempt) + Math.floor(Math.random() * 120));
+        }
+      }
+    }
+    throw lastErr;
+  } finally {
+    releaseSqlSlot();
+  }
+}
+
+const _sqlInFlight = new Map<string, Promise<Row[]>>();
+function execPgSqlShared<T = Row>(sqlText: string): Promise<T[]> {
+  const hit = _sqlInFlight.get(sqlText);
+  if (hit) return hit as Promise<T[]>;
+  const p = execPgSqlSharedInner<T>(sqlText).finally(() => _sqlInFlight.delete(sqlText));
+  _sqlInFlight.set(sqlText, p as Promise<Row[]>);
+  return p;
 }
 
 // 网关瞬时错误：连接池耗尽 / 限流 / 网关抖动等。这些应重试而非直接 500。
@@ -152,34 +210,15 @@ async function execPgSqlOnce<T = Row>(sqlText: string): Promise<T[]> {
  * 经 B 通道执行一条 SQL。返回 SELECT 的结果行（数组，空结果即 []）；
  * 非 SELECT 返回 [] 或 [{ok:1}]（网关形态，本后端不依赖其具体形状）。
  *
- * 修复：套上「并发栅栏 + 瞬时错误重试」，彻底消除浏览器并发拉取时偶发的
- * EMAXCONNSESSION → 500（见文件顶部并发栅栏说明）。
+ * 修复：套上「in-flight SQL 去重 + 并发栅栏 + 瞬时错误重试」。
+ * - in-flight 去重：相同 SQL 字符串在同一时刻只发一次（其它 caller 复用 Promise）；
+ *   单页打开时多 endpoint 同一查询（如 outputs/prd 与 outputs/card 同时查 prds/cards）
+ *   自动合并，避免挤爆令牌桶与 PG 连接池。
+ * - 并发栅栏：本进程同时在飞 SQL 数 ≤ MAX_CONCURRENT_SQL=5（留 5 槽余量给同 env 其它消费方）。
+ * - 瞬时错误重试：EMAXCONNSESSION / 限流 / 网关抖动最多 7 次，指数退避。
  */
-async function execPgSql<T = Row>(sqlText: string): Promise<T[]> {
-  assertConfig();
-  await acquireSqlSlot();
-  try {
-    // 瞬时错误（连接池耗尽 / 限流 / 网关抖动）最多重试 7 次，指数退避 + 抖动。
-    // EMAXCONNSESSION 返回的是 HTTP 400（非 5xx），故重试判定靠错误体关键字，不靠状态码。
-    const MAX_ATTEMPTS = 7;
-    let lastErr: unknown;
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      try {
-        return await execPgSqlOnce<T>(sqlText);
-      } catch (e) {
-        lastErr = e;
-        // 仅对瞬时的连接池/网关类错误重试；业务错误（如字段契约漂移、SQL 语法错）
-        // 立即抛出，避免掩盖真实问题。
-        if (!isTransientSqlError(e)) break;
-        if (attempt < MAX_ATTEMPTS - 1) {
-          await sleepMs(150 * Math.pow(2, attempt) + Math.floor(Math.random() * 120));
-        }
-      }
-    }
-    throw lastErr;
-  } finally {
-    releaseSqlSlot();
-  }
+function execPgSql<T = Row>(sqlText: string): Promise<T[]> {
+  return execPgSqlShared<T>(sqlText);
 }
 
 // ---------------------------------------------------------------------------

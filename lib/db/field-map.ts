@@ -33,6 +33,8 @@ export const TABLES: ReadonlySet<string> = new Set([
   "api_tokens",
   "share_tokens",
   "objects",
+  "dev_contexts",
+  "dev_context_versions",
 ]);
 
 /** 代码键 → PG 列名。同名项也必须显式列出（见维护约定 2）。 */
@@ -214,6 +216,33 @@ export const FIELD_MAP: Readonly<Record<string, Readonly<Record<string, string>>
     created_at: "created_at",
     updated_at: "updated_at",
   },
+
+  // 开发上下文（机器读产物）。与 prds/solutions 同惯例，代码键用 snake_case。
+  dev_contexts: {
+    requirement_id: "requirement_id",
+    content: "content",
+    completeness_score: "completeness_score",
+    status: "status",
+    current_version: "current_version",
+    applicable_count: "applicable_count",
+    present_count: "present_count",
+    upstream_ids: "upstream_ids",
+    maybe_stale: "maybe_stale",
+    generated_by: "generated_by",
+    updated_at: "updated_at",
+  },
+
+  dev_context_versions: {
+    id: "id", // TEXT，值为 `${requirement_id}-v${version}`
+    requirement_id: "requirement_id",
+    version: "version",
+    content: "content",
+    completeness_score: "completeness_score",
+    status: "status",
+    changelog: "changelog",
+    note: "note",
+    created_at: "created_at",
+  },
 };
 
 /** PG 列名 → 代码键（由 FIELD_MAP 反转，构建期一次性生成）。 */
@@ -248,6 +277,8 @@ export const TIMESTAMP_COLS: Readonly<Record<string, readonly string[]>> = {
   api_tokens: ["last_used_at", "expires_at", "created_at", "revoked_at"],
   share_tokens: ["created_at", "expires_at"],
   objects: ["created_at", "updated_at"],
+  dev_contexts: ["updated_at"],
+  dev_context_versions: ["created_at"],
 };
 
 /**
@@ -278,6 +309,8 @@ export const JSONB_COLS: Readonly<Record<string, readonly string[]>> = {
   api_tokens: [],
   share_tokens: [],
   objects: [],
+  dev_contexts: ["content", "upstream_ids"],
+  dev_context_versions: ["content", "changelog"],
 };
 
 /**
@@ -303,6 +336,8 @@ export const BIGINT_COLS: Readonly<Record<string, readonly string[]>> = {
   api_tokens: [],
   share_tokens: [],
   objects: [],
+  dev_contexts: ["requirement_id"],
+  dev_context_versions: ["id"],
 };
 
 /**
@@ -330,6 +365,8 @@ export const ALLOWED_ID_KEYS: Readonly<Record<string, readonly string[]>> = {
   api_tokens: ["id", "token_hash"], // token_hash 是 Bearer 鉴权热路径，有 UNIQUE 索引
   share_tokens: ["id"],
   objects: ["id"],
+  dev_contexts: ["requirement_id"],       // requirement_id 是 PRIMARY KEY
+  dev_context_versions: ["id"],            // id 是 PRIMARY KEY（复合 id 惯例）
 };
 
 /**
@@ -354,4 +391,6 @@ export const ORDER_HINT: Readonly<Record<string, string | undefined>> = {
   api_tokens: "created_at",
   share_tokens: "created_at",
   objects: "created_at",
+  dev_contexts: "updated_at",
+  dev_context_versions: "created_at",
 };

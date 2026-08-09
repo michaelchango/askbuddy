@@ -1,6 +1,7 @@
 // 输出物聚合服务 v2：4 组输出物（需求卡片 / 调研分析 / 方案设计 / 需求文档）。
 // 方案设计为组类型，内含方案文档 + 原型两个子产物。
 import { db } from "@/lib/db";
+import { memo, invalidateCache } from "@/lib/utils/memo";
 import { getRequirement } from "./requirements";
 import { getPrototypeHtml, listVersions as listPrototypeVersions } from "./prototypes";
 import { buildResearchAnalysisMarkdown } from "@/lib/render/research-analysis";
@@ -83,7 +84,8 @@ function cardHasContent(card?: RequirementCard): boolean {
 
 // ---- 列出所有输出物元信息 ----
 
-export async function listOutputs(requirementId: string): Promise<OutputMeta[]> {
+// 内部实现（未 memo），被 listOutputs 包装
+async function _listOutputs(requirementId: string): Promise<OutputMeta[]> {
   const req = await getRequirement(requirementId);
   const cardExists = cardHasContent(req?.card);
   const cardVersion = (req as unknown as Record<string, unknown>)?.current_version as number ?? 0;
@@ -150,6 +152,23 @@ export async function listOutputs(requirementId: string): Promise<OutputMeta[]> 
         };
     }
   });
+}
+
+/**
+ * 【P0 修遗漏】5s 数据层缓存：listOutputs 单次调用 = 5 SQL（1 requirements + 4 outputs），
+ * 是单页打开时的「热路径」之一。in-flight dedup 帮不了不同 requirementId 的调用，
+ * 必须用 TTL 缓存。生成/更新输出物后由调用方 invalidate 失效。
+ */
+export const listOutputs = memo(
+  (requirementId: string) => `listOutputs:${requirementId}`,
+  5000,
+  _listOutputs
+);
+
+/** 输出物列表缓存失效（生成/更新/删除后调用）。 */
+export function invalidateOutputsCache(requirementId?: string): number {
+  if (requirementId) return invalidateCache(`listOutputs:${requirementId}`);
+  return invalidateCache("listOutputs:*");
 }
 
 // ---- 获取输出物内容 ----

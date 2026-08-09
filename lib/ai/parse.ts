@@ -212,6 +212,34 @@ export function extractResearchAnalysis(text: string): ResearchAnalysisOutput {
   return { report, userStories, features };
 }
 
+// 从模型输出中抽取 DevContext 的「内容段」JSON（不含 meta/references）。
+// DevContext prompt 约定只输出一个 ```json 围栏；兼容模型偶发在正文前后夹带文字的情况：
+//  ① 优先匹配 ```json ... ``` 围栏；
+//  ② 回退：从第一个 { 起扫描「平衡对象」，取最长合法 JSON 对象。
+export function extractDevContextJson(text: string): unknown | null {
+  const fenceRe = /```json\s*([\s\S]*?)\s*```/i;
+  const m = text.match(fenceRe);
+  if (m) {
+    try {
+      return JSON.parse(m[1]);
+    } catch {
+      // 围栏内非法 JSON，落到下方裸对象兜底
+    }
+  }
+  const start = text.indexOf("{");
+  if (start !== -1) {
+    const found = findJsonValue(text, start);
+    if (found) {
+      try {
+        return JSON.parse(found.jsonStr);
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
 // 纯文本提取（方案文档 / PRD 无 JSON 结构，整段即为内容）。
 // 兜底：若模型误带 JSON（尾部 ```json 围栏或尾部裸 JSON 对象），剥离后再返回纯 Markdown，
 // 确保文档类产物一律为 md 格式。仅剥离「结尾」的 JSON，避免误伤正文中的代码示例。

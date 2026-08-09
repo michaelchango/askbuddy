@@ -2,6 +2,7 @@
 # 依赖与构建产物
 node_modules/
 .next/
+.next-tmp/
 out/
 build/
 

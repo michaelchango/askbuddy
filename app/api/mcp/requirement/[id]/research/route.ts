@@ -1,33 +1,25 @@
 import { NextResponse } from "next/server";
 import { authenticate } from "@/lib/auth/bearer";
-import { db } from "@/lib/db";
+import { getOutput } from "@/lib/services/outputs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// MCP 平台侧：获取调研分析结论（报告 + 用户故事 + 功能清单）
+// MCP 平台侧：获取调研分析结论（Markdown）。经 outputs.getOutput 复用统一版本/降级逻辑。
 export async function GET(
-  req: Request,
+  _req: Request,
   { params }: { params: { id: string } }
 ) {
-  const user = await authenticate(req);
+  const user = await authenticate(_req);
   if (!user)
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
-  const ra = await db.get<{
-    report?: string;
-    user_stories?: unknown[];
-    features?: unknown[];
-  }>("research_analysis", params.id);
-  if (!ra)
+  const out = await getOutput(params.id, "research_analysis");
+  if (!out || !out.content)
     return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
 
   return NextResponse.json({
     ok: true,
-    data: {
-      report: ra.report ?? "",
-      userStories: ra.user_stories ?? [],
-      features: ra.features ?? [],
-    },
+    data: { version: out.version, markdown: out.content, versions: out.versions },
   });
 }

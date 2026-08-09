@@ -6,6 +6,7 @@ import { summarizeTitle } from "@/lib/ai/title";
 import { extractCard } from "@/lib/ai/orchestrator";
 import { initSteps } from "@/lib/services/steps";
 import { attachDerivedStatus } from "@/lib/stage";
+import { memo, invalidateCache } from "@/lib/utils/memo";
 import type { Requirement, RequirementCard, TitleSource } from "@/types";
 
 export const EMPTY_CARD: RequirementCard = {
@@ -17,31 +18,60 @@ export const EMPTY_CARD: RequirementCard = {
   constraints: "",
 };
 
-export async function listRequirements(projectId: string): Promise<Requirement[]> {
-  // 下推：完整命中 idx_req_project (project_id, updated_at DESC) WHERE archived_at IS NULL
-  // —— 过滤、部分索引条件、排序三者都由这一个索引满足，无需额外 Sort 节点。
-  // 排序口径取 updatedAt desc 而非 createdAt：调用方 app/api/requirements/route.ts
-  // 拿到结果后本来就按 updatedAt desc 重排一遍，与其让库里出一个随后被推翻的顺序，
-  // 不如一开始就按最终口径出，那次内存 sort 随之退化为无操作。
-  const list = await db.findMany<Requirement>("requirements", {
-    where: { projectId: { eq: projectId }, archived_at: { isNull: true } },
-    orderBy: [["updatedAt", "desc"]],
-  });
-  return attachDerivedStatus(list);
-}
+// ---------------------------------------------------------------------------
+// 【P0 修遗漏】数据层内存缓存（listRequirements + listRequirementsForOwner +
+// getRequirementWithStatus）。这是单页打开时「热到烫手」的三个入口：
+//
+// 1. dashboard/project 页 → GET /api/requirements → listRequirements
+// 2. 跨项目 dashboard → listRequirementsForOwner
+// 3. 需求详情页 RSC → getRequirementWithStatus
+//
+// 旧实现裸调 db.findMany + attachDerivedStatus，每次都打 2 SQL（1 requirements +
+// 1 requirement_steps），单页扇出阶段这里就贡献 6+ SQL。in-flight dedup 救不了
+// 不同 id 数组（不同 SQL 字符串），必须用 TTL 缓存。
+//
+// 失效时机：touch / update / create / delete / 步骤状态变更 → invalidate。
+// 5s TTL 让读多写少场景几乎零 DB 开销，又避免长期脏数据。
+// ---------------------------------------------------------------------------
+const LIST_TTL_MS = 5000;
+
+export const listRequirements = memo(
+  (projectId: string) => `listRequirements:${projectId}`,
+  LIST_TTL_MS,
+  async (projectId: string): Promise<Requirement[]> => {
+    // 下推：完整命中 idx_req_project (project_id, updated_at DESC) WHERE archived_at IS NULL
+    // —— 过滤、部分索引条件、排序三者都由这一个索引满足，无需额外 Sort 节点。
+    const list = await db.findMany<Requirement>("requirements", {
+      where: { projectId: { eq: projectId }, archived_at: { isNull: true } },
+      orderBy: [["updatedAt", "desc"]],
+    });
+    return attachDerivedStatus(list);
+  }
+);
 
 /** 当前用户全部需求（跨项目），用于概览页「最近需求」。 */
-export async function listRequirementsForOwner(ownerId: string): Promise<Requirement[]> {
-  const owned = await listProjects(ownerId);
-  const ids = owned.map((p) => p.id);
-  if (ids.length === 0) return [];
-  // 下推：闭包里的 Set.has 是「无法翻译成 SQL」的典型 —— 换成声明式的 in 之后，
-  // 同一个语义就能直接落到 project_id IN (...)，不必再把全表拉回内存。
-  const list = await db.findMany<Requirement>("requirements", {
-    where: { projectId: { in: ids }, archived_at: { isNull: true } },
-    orderBy: [["updatedAt", "desc"]],
-  });
-  return attachDerivedStatus(list);
+export const listRequirementsForOwner = memo(
+  (ownerId: string) => `listRequirementsForOwner:${ownerId}`,
+  LIST_TTL_MS,
+  async (ownerId: string): Promise<Requirement[]> => {
+    const owned = await listProjects(ownerId);
+    const ids = owned.map((p) => p.id);
+    if (ids.length === 0) return [];
+    // 下推：project_id IN (...)
+    const list = await db.findMany<Requirement>("requirements", {
+      where: { projectId: { in: ids }, archived_at: { isNull: true } },
+      orderBy: [["updatedAt", "desc"]],
+    });
+    return attachDerivedStatus(list);
+  }
+);
+
+/** 列表缓存失效。写操作（创建/删除/更新/步骤变更）后调用。 */
+export function invalidateRequirementsCache(): void {
+  invalidateCache("listRequirements:*");
+  invalidateCache("listRequirementsForOwner:*");
+  invalidateCache("getRequirementWithStatus:*");
+  invalidateCache("listOutputs:*");
 }
 
 export async function createRequirement(input: {
@@ -71,13 +101,15 @@ export async function createRequirement(input: {
   return { ...persisted, status: "dialoguing" };
 }
 
-export async function getRequirementWithStatus(
-  id: string
-): Promise<Requirement | undefined> {
-  const req = await getRequirement(id);
-  if (!req) return undefined;
-  return (await attachDerivedStatus([req]))[0];
-}
+export const getRequirementWithStatus = memo(
+  (id: string) => `getRequirementWithStatus:${id}`,
+  LIST_TTL_MS,
+  async (id: string): Promise<Requirement | undefined> => {
+    const req = await getRequirement(id);
+    if (!req) return undefined;
+    return (await attachDerivedStatus([req]))[0];
+  }
+);
 
 export async function updateRequirementTitle(
   id: string,
@@ -93,6 +125,8 @@ export async function updateRequirementTitle(
   };
   if (source !== undefined) patch.titleSource = source;
   await db.update("requirements", id, patch);
+  // 写后失效缓存（让 listRequirements / getRequirementWithStatus 立即读到新值）
+  invalidateRequirementsCache();
 }
 
 export async function getRequirement(id: string): Promise<Requirement | undefined> {
@@ -102,6 +136,8 @@ export async function getRequirement(id: string): Promise<Requirement | undefine
 /** 刷新需求的「最近更新时间」（如每次对话轮次结束后调用）。 */
 export async function touchRequirement(id: string): Promise<void> {
   await db.update("requirements", id, { updatedAt: new Date().toISOString() });
+  // 写后失效缓存（updatedAt 变化会影响 list 排序）
+  invalidateRequirementsCache();
 }
 
 /**
@@ -123,6 +159,8 @@ const REQUIREMENT_CHILD_TABLES = [
   "prototype_versions",
   "prds",
   "prd_versions",
+  "dev_contexts",
+  "dev_context_versions",
   "share_tokens",
 ] as const;
 

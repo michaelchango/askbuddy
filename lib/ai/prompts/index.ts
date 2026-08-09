@@ -5,6 +5,7 @@ import { dialoguingPrompt } from "./dialoguing";
 import { researchAnalysisPrompt } from "./research-analysis";
 import { solutionWritingPrompt } from "./designing";
 import { prdWritingPrompt } from "./prd-writing";
+import { devcontextPrompt } from "./devcontext";
 import { prototypeGenPrompt } from "./prototype-gen";
 import { prototypeEditPrompt } from "./prototype-edit";
 
@@ -13,6 +14,7 @@ const registry: Record<string, PromptModule> = {
   research_analysis: researchAnalysisPrompt,
   solution_writing: solutionWritingPrompt,
   prd_writing: prdWritingPrompt,
+  devcontext: devcontextPrompt,
   prototype_gen: prototypeGenPrompt,
   prototype_edit: prototypeEditPrompt,
 };

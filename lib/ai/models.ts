@@ -16,6 +16,7 @@ const DEFAULTS = {
   designing: "hy3-preview", // 方案文档生成（需要更强生成能力）
   solution_writing: "hy3", // 方案文档生成
   prd_writing: "hy3-preview", // PRD 长文生成
+  devcontext: "hy3-preview", // DevContext 结构化 JSON 生成（长结构、需强指令遵循）
   prototype_gen: "hy3-preview", // 原型 HTML 生成（需要更强生成能力）
   prototype_edit: "hy3-preview", // 原型对话式修改
 } as const;
@@ -27,6 +28,7 @@ const ENV_KEYS: Record<keyof typeof DEFAULTS, string> = {
   designing: "AI_MODEL_DESIGNING",
   solution_writing: "AI_MODEL_SOLUTION",
   prd_writing: "AI_MODEL_PRD_WRITING",
+  devcontext: "AI_MODEL_DEVCONTEXT",
   prototype_gen: "AI_MODEL_PROTOTYPE_GEN",
   prototype_edit: "AI_MODEL_PROTOTYPE_EDIT",
 };

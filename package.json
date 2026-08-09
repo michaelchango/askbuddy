@@ -17,6 +17,7 @@
     "db:setup:cloudbase": "tsx scripts/db-setup-cloudbase.ts",
     "db:probe": "tsx scripts/probe-cloudbase-pg.ts",
     "verify:embedding": "tsx scripts/verify-embedding.ts",
+    "test": "tsx --test lib/schemas/devcontext.test.ts lib/services/devcontext-validate.test.ts lib/services/devcontext-render.test.ts lib/ai/context/builder.test.ts",
     "test:parity": "tsx --test __tests__/db-pushdown-parity.test.ts"
   },
   "dependencies": {

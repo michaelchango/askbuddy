@@ -276,6 +276,38 @@ CREATE TABLE prd_versions (
     REFERENCES requirements(id) ON DELETE CASCADE
 );
 
+-- ---------------- 开发上下文（机器读产物） ----------------
+-- 一个需求一份，多段式 JSON 存 content。版本独立自增，不与 PRD 版本绑定（M2-D2）。
+CREATE TABLE dev_contexts (
+  requirement_id     TEXT        PRIMARY KEY REFERENCES requirements(id) ON DELETE CASCADE,
+  content            JSONB       NOT NULL,              -- DevContextSchema 全量（含 meta / references）
+  completeness_score NUMERIC(4,3) NOT NULL DEFAULT 0,   -- 冗余出列，便于列表页排序/筛选而不解 JSONB
+  status             TEXT        NOT NULL DEFAULT 'draft'  CHECK (status IN ('draft','confirmed')),
+  current_version    INTEGER     NOT NULL DEFAULT 0,
+  applicable_count   INTEGER     NOT NULL DEFAULT 0,    -- 评分分母，冗余列
+  present_count      INTEGER     NOT NULL DEFAULT 0,
+  upstream_ids       JSONB       NOT NULL DEFAULT '[]'::jsonb,  -- 与 prds/solutions 同惯例，供 M5 变更联动
+  maybe_stale        SMALLINT    NOT NULL DEFAULT 0,            -- 同上
+  generated_by       TEXT,
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_devctx_score ON dev_contexts (completeness_score);
+
+-- 版本快照（与 prd_versions / solution_versions 完全同构）
+CREATE TABLE dev_context_versions (
+  id             TEXT        PRIMARY KEY,          -- `${requirement_id}-v${version}`，沿用 prototype_versions 的复合 id 惯例
+  requirement_id TEXT        NOT NULL REFERENCES requirements(id) ON DELETE CASCADE,
+  version        INTEGER     NOT NULL,
+  content        JSONB       NOT NULL,
+  completeness_score NUMERIC(4,3) NOT NULL DEFAULT 0,
+  status         TEXT        NOT NULL DEFAULT 'draft',
+  changelog      JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  note           TEXT        NOT NULL DEFAULT '',
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (requirement_id, version)
+);
+CREATE INDEX idx_devctx_ver_req ON dev_context_versions (requirement_id, version DESC);
+
 
 -- ---------------- API Token（PAT） ----------------
 CREATE TABLE api_tokens (
@@ -284,14 +316,14 @@ CREATE TABLE api_tokens (
   name         TEXT        NOT NULL,
   token_hash   TEXT        NOT NULL,
   key_preview  TEXT        NULL,                 -- 代码 tokens.ts:66 写入，原 schema 缺失
-  last_used_at TIMESTAMPTZ NULL,                 -- 技术债：代码从不更新
+  last_used_at TIMESTAMPTZ NULL,                 -- 最近使用时间，由 verifyToken 写入（F9）
   expires_at   TIMESTAMPTZ NULL,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   revoked_at   TIMESTAMPTZ NULL,
   CONSTRAINT pk_api_tokens PRIMARY KEY (id)
 );
 COMMENT ON COLUMN api_tokens.expires_at IS 'NULL 表示永不过期';
-COMMENT ON COLUMN api_tokens.last_used_at IS '技术债：当前代码从不更新此列';
+COMMENT ON COLUMN api_tokens.last_used_at IS '最近一次鉴权使用时间，由 verifyToken 写入（F9）';
 
 
 -- ---------------- 原型分享令牌 ----------------

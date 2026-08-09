@@ -21,6 +21,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   smallint,
   text,
@@ -435,3 +436,57 @@ export const objects = pgTable("objects", {
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// 开发上下文（机器读产物）
+// ---------------------------------------------------------------------------
+// 一个需求一份，多段式 JSON 存 content。版本独立自增，不与 PRD 版本绑定（M2-D2）。
+export const devContexts = pgTable(
+  "dev_contexts",
+  {
+    /** 直接做主键：与 prds 同惯例，一个需求恒一份。 */
+    requirementId: text("requirement_id").primaryKey(),
+    /** DevContextSchema 全量（含 meta / references）。 */
+    content: jsonb("content").notNull(),
+    /** 冗余出列，便于列表页排序/筛选而不解 JSONB。 */
+    completenessScore: numeric("completeness_score", { precision: 4, scale: 3 }).notNull().default("0"),
+    status: text("status").notNull().default("draft"),
+    currentVersion: integer("current_version").notNull().default(0),
+    /** 评分分母，冗余列。 */
+    applicableCount: integer("applicable_count").notNull().default(0),
+    /** 评分分子，冗余列。 */
+    presentCount: integer("present_count").notNull().default(0),
+    /** 与 prds/solutions 同惯例，供 M5 变更联动。 */
+    upstreamIds: jsonb("upstream_ids").notNull().default([]),
+    maybeStale: smallint("maybe_stale").notNull().default(0),
+    generatedBy: text("generated_by"),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    ckStatus: check("ck_devctx_status", sql`${t.status} IN ('draft','confirmed')`),
+    idxScore: index("idx_devctx_score").on(t.completenessScore),
+  })
+);
+
+// 版本快照（与 prd_versions / solution_versions 完全同构）。
+export const devContextVersions = pgTable(
+  "dev_context_versions",
+  {
+    /** 复合串主键 `${requirement_id}-v${version}`，沿用 prototype_versions 惯例。 */
+    id: text("id").primaryKey(),
+    requirementId: text("requirement_id")
+      .notNull()
+      .references(() => requirements.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    content: jsonb("content").notNull(),
+    completenessScore: numeric("completeness_score", { precision: 4, scale: 3 }).notNull().default("0"),
+    status: text("status").notNull().default("draft"),
+    changelog: jsonb("changelog").notNull().default([]),
+    note: text("note").notNull().default(""),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    uqVer: unique("uq_devctx_ver").on(t.requirementId, t.version),
+    idxReq: index("idx_devctx_ver_req").on(t.requirementId, t.version),
+  })
+);

@@ -19,91 +19,66 @@ function normalizeUpdatedAt(v?: string): string {
   return v ?? "";
 }
 
+/** 表名 + 解析产出版本/更新时间的元数据提取函数。 */
+const TABLE_META: Record<LibraryType, { table: string; extract: (row: { current_version?: number; updated_at?: string; doc?: string }) => { version: number; updatedAt: string; exists: boolean } }> = {
+  research: {
+    table: "research_analysis",
+    extract: (r) => ({ version: r.current_version || 1, updatedAt: normalizeUpdatedAt(r.updated_at), exists: true }),
+  },
+  solution: {
+    table: "solutions",
+    extract: (r) => ({ version: r.current_version || 1, updatedAt: normalizeUpdatedAt(r.updated_at), exists: !!r.doc }),
+  },
+  prototype: {
+    table: "prototypes",
+    extract: (r) => ({ version: r.current_version ?? 0, updatedAt: normalizeUpdatedAt(r.updated_at), exists: (r.current_version ?? 0) > 0 }),
+  },
+  prd: {
+    table: "prds",
+    extract: (r) => ({ version: r.current_version ?? 0, updatedAt: normalizeUpdatedAt(r.updated_at), exists: (r.current_version ?? 0) > 0 }),
+  },
+};
+
 /**
  * 获取项目下指定类型的所有产出物列表（仅含元数据，不含完整内容）。
  * 按 updatedAt 倒序排列。
+ *
+ * 关键修复（库页 N+1 → 1 次 IN 查询）：
+ * 旧实现对每个需求都 `db.get(table, req.id, "requirement_id")`，项目若有 50 条需求
+ * = 1 + 50 = 51 条 SQL。新实现 1 次 `findMany` 用 IN 子句批量取，1 + 1 = 2 条。
  */
 export async function getProjectLibrary(
   projectId: string,
   type: LibraryType
 ): Promise<LibraryItem[]> {
   const requirements = await listRequirements(projectId);
+  if (requirements.length === 0) return [];
 
-  // 批量查询产出物表
-  const checks = await Promise.all(
-    requirements.map(async (req) => {
-      switch (type) {
-        case "research": {
-          const row = await db.get<{ current_version?: number; updated_at?: string }>(
-            "research_analysis",
-            req.id,
-            "requirement_id"
-          );
-          if (!row) return null;
-          return {
-            requirementId: req.id,
-            requirementTitle: req.title,
-            requirementStatus: req.status,
-            version: row.current_version || 1,
-            updatedAt: normalizeUpdatedAt(row.updated_at),
-            exists: true,
-          };
-        }
-        case "solution": {
-          const row = await db.get<{ doc?: string; current_version?: number; updated_at?: string }>(
-            "solutions",
-            req.id,
-            "requirement_id"
-          );
-          if (!row?.doc) return null;
-          return {
-            requirementId: req.id,
-            requirementTitle: req.title,
-            requirementStatus: req.status,
-            version: row.current_version || 1,
-            updatedAt: normalizeUpdatedAt(row.updated_at),
-            exists: true,
-          };
-        }
-        case "prototype": {
-          const row = await db.get<{
-            current_version: number;
-            updated_at?: string;
-          }>("prototypes", req.id, "requirement_id");
-          if (!row || (row.current_version ?? 0) <= 0) return null;
-          return {
-            requirementId: req.id,
-            requirementTitle: req.title,
-            requirementStatus: req.status,
-            version: row.current_version,
-            updatedAt: normalizeUpdatedAt(row.updated_at),
-            exists: true,
-          };
-        }
-        case "prd": {
-          const row = await db.get<{
-            current_version: number;
-            updated_at?: string;
-          }>("prds", req.id, "requirement_id");
-          if (!row || (row.current_version ?? 0) <= 0) return null;
-          return {
-            requirementId: req.id,
-            requirementTitle: req.title,
-            requirementStatus: req.status,
-            version: row.current_version,
-            updatedAt: normalizeUpdatedAt(row.updated_at),
-            exists: true,
-          };
-        }
-        default:
-          return null;
-      }
-    })
+  const meta = TABLE_META[type];
+  const ids = requirements.map((r) => r.id);
+  const rows = await db.findMany<{ requirement_id: string; current_version?: number; updated_at?: string; doc?: string }>(
+    meta.table,
+    { where: { requirement_id: { in: ids } } }
   );
+  // 按 requirement_id 建索引，便于 O(1) 查找
+  const byReqId = new Map<string, { current_version?: number; updated_at?: string; doc?: string }>();
+  for (const row of rows) byReqId.set(row.requirement_id, row);
 
-  const result: LibraryItem[] = checks.filter(
-    (item): item is NonNullable<typeof item> => item != null
-  );
+  const result: LibraryItem[] = [];
+  for (const req of requirements) {
+    const row = byReqId.get(req.id);
+    if (!row) continue;
+    const { version, updatedAt, exists } = meta.extract(row);
+    if (!exists) continue;
+    result.push({
+      requirementId: req.id,
+      requirementTitle: req.title,
+      requirementStatus: req.status,
+      version,
+      updatedAt,
+      exists: true,
+    });
+  }
 
   // 按更新时间倒序
   result.sort(

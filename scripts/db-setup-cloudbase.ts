@@ -95,6 +95,7 @@ async function main(): Promise<void> {
   console.log(`[setup] 从 schema.sql 拆出 ${stmts.length} 条语句，开始执行…`);
 
   let ok = 0;
+  let skipped = 0;
   for (const stmt of stmts) {
     const preview = stmt.replace(/\s+/g, " ").slice(0, 70);
     try {
@@ -102,12 +103,19 @@ async function main(): Promise<void> {
       ok++;
       console.log(`  ✓ ${preview}`);
     } catch (e) {
+      const msg = (e as Error).message;
+      // 已存在的表/索引/扩展直接跳过（幂等语义），其他错误才中断
+      if (/already exists|42P07|42P07/.test(msg)) {
+        skipped++;
+        console.log(`  ⊘ ${preview}（已存在，跳过）`);
+        continue;
+      }
       console.error(`  ✗ ${preview}`);
-      console.error(`    ${(e as Error).message.slice(0, 200)}`);
+      console.error(`    ${msg.slice(0, 200)}`);
       process.exit(1);
     }
   }
-  console.log(`[setup] 执行完成：${ok}/${stmts.length}`);
+  console.log(`[setup] 执行完成：${ok} 成功 / ${skipped} 跳过 / 共 ${stmts.length} 条`);
 
   // 校验 16 张业务表是否就绪
   const tables = [
@@ -115,6 +123,7 @@ async function main(): Promise<void> {
     "card_versions", "research_analysis", "research_analysis_versions",
     "solutions", "solution_versions", "prototypes", "prototype_versions",
     "prds", "prd_versions", "api_tokens", "share_tokens", "objects",
+    "dev_contexts", "dev_context_versions",
   ];
   const rows = await execPgSql<{ t: string }>(
     `SELECT table_name AS t FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'`
@@ -125,7 +134,7 @@ async function main(): Promise<void> {
     console.error(`[setup] 缺表：${missing.join(", ")}`);
     process.exit(1);
   }
-  console.log(`[setup] 16 张业务表全部就绪 ✓`);
+  console.log(`[setup] ${tables.length} 张业务表全部就绪 ✓`);
 }
 
 main().catch((e) => {

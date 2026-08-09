@@ -119,6 +119,35 @@ export async function savePrototypeVersion(
   return { version, html_storage_key: key, structure: data.structure ?? null };
 }
 
+// 原型概要：供 MCP 轻量默认返回（仅结构 + 版本列表，不含 HTML）。
+export interface PrototypeSummary {
+  version: number | null;
+  structure: PrototypeStructure | null;
+  versions: Array<{ version: number; note?: string; createdAt?: string }>;
+  updatedAt?: string;
+}
+
+export async function getPrototypeSummary(
+  requirementId: string
+): Promise<PrototypeSummary> {
+  const latest = await db.get<{
+    current_version: number;
+    structure: PrototypeStructure | null;
+    updated_at?: string;
+  }>("prototypes", requirementId, "requirement_id");
+  const vs = await listVersions(requirementId);
+  return {
+    version: latest?.current_version ?? null,
+    structure: latest?.structure ?? null,
+    versions: vs.map((v) => ({
+      version: v.version,
+      note: v.note,
+      createdAt: v.created_at,
+    })),
+    updatedAt: latest?.updated_at,
+  };
+}
+
 // 回退到指定版本：将该版本内容设为最新。
 export async function restoreVersion(
   requirementId: string,

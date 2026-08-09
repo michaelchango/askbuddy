@@ -5,6 +5,7 @@ import { getSteps, markStepDone, markStepInProgress, setStepState, nextStepOf, i
 import { addMessage } from "@/lib/services/conversations";
 import { touchRequirement } from "@/lib/services/requirements";
 import { db } from "@/lib/db";
+import { scheduleDevContextGeneration, abortDcGen } from "@/lib/ai/steps/devcontext";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   // 需求文档进入【进行中】
   await markStepInProgress(params.id, "prd_writing").catch(() => {});
+
+  // 【P0 修遗留】客户端断开 → 立即取消后台 DC 任务，释放 token + DB 连接
+  // 否则 fire-and-forget 任务会跑满 180s 没人能停，挤占连接池
+  req.signal.addEventListener("abort", () => abortDcGen(params.id));
 
   const stream = await runGeneration("prd_writing", params.id, {
     message: body?.message ?? "",
@@ -104,6 +109,32 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           );
         }
         controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ type: result.type })}\n\n`));
+
+        // M2：PRD 生成完成后，同源并列触发 DevContext 生成。
+        // 关键修复：DevContext 改为「后台异步、不阻塞 SSE」。
+        // 真实 AI 生成 16 段结构化 DevContext 可能耗时 30~90s；若在此 await，
+        // 会一直撑着 SSE 连接不关闭，而客户端「左栏可点击 / 完成通知」都写在
+        // reader 循环之后（连接关闭后才执行），导致 PRD 明明已好却「卡很久」。
+        // 因此 fire-and-forget，SSE 立即关闭；DevContext 完成后由前端面板轮询刷新。
+        controller.enqueue(
+          encoder.encode(
+            `event: devcontext_update\ndata: ${JSON.stringify({ version: null, pending: true })}\n\n`
+          )
+        );
+        // 【P0 修遗留】改用 scheduleDevContextGeneration：注册到集中任务表，
+        // 同一 requirementId 并发触发时复用现有 Promise，外部可主动 abort。
+        const { promise } = scheduleDevContextGeneration(params.id, {
+          trigger: "prd_writing",
+          timeoutMs: Number(process.env.DEVCONTEXT_TIMEOUT_MS ?? 180000),
+        });
+        promise
+          .then((v) => console.log(`[devcontext] requirement=${params.id} 生成完成 v${v}`))
+          .catch((e) =>
+            console.error(
+              `[devcontext] requirement=${params.id} 生成失败：`,
+              e instanceof Error ? e.message : e
+            )
+          );
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ message })}\n\n`));

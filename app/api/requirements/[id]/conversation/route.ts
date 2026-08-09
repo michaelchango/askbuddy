@@ -12,6 +12,8 @@ import {
   nextStepOf,
 } from "@/lib/services/steps";
 import { analyzeChanges } from "@/lib/services/change-analyzer";
+import { abortDcGen } from "@/lib/ai/steps/devcontext";
+import { getDevContext } from "@/lib/services/devcontext";
 import { db } from "@/lib/db";
 import { isTransientSqlError } from "@/lib/db/cloudbase";
 import type { RequirementStep, StepName, RequirementCard } from "@/types";
@@ -153,6 +155,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const references = body?.references ?? [];
 
   const requirementId = params.id;
+
+  // 【P0 修遗留】客户端断开 → 立即取消后台 DC 任务，释放 token + DB 连接
+  req.signal.addEventListener("abort", () => abortDcGen(requirementId));
+
   const stepsBefore: RequirementStep[] = await getSteps(requirementId);
 
   await addMessage(requirementId, "user", message);
@@ -234,17 +240,46 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
               encoder.encode(`event: step_update\ndata: ${JSON.stringify(steps)}\n\n`)
             );
 
+            // M2：变更波及 DevContext 上游（卡片/调研/方案，不含 prd）时，由**前端在重生成队列
+            // 排空后**再触发 DC 再生成（change_analysis），避免 DC 与 design/prototype 重生成
+            // 同时抢 hy3-preview 配额 + DB 连接导致 500（用户实测反馈）。
+            // 规避双重触发：若 PRD 本身受影响，PRD 重生成（prd/route.ts）会以 prd_writing 自带
+            // 触发 DC，此处不介入；仅当 DC 已存在（说明 PRD 已生成过）才置 dcRegen，避免对话
+            // 阶段改卡片就提前创建 DC。
+            const dcUpstreams = ["card", "research_analysis", "design"];
+            const affectsDcUpstream = affectedOutputs.some((o) => dcUpstreams.includes(o));
+            const prdAffected = affectedOutputs.includes("prd");
+            const dcShouldRegen =
+              affectsDcUpstream && !prdAffected
+                ? !!(await getDevContext(requirementId).catch(() => null))
+                : false;
+
             controller.enqueue(
               encoder.encode(
                 `event: change_update\ndata: ${JSON.stringify({
                   affectedOutputs,
                   changes: changes.changes,
                   summary: changes.summary,
+                  dcRegen: dcShouldRegen,
                 })}\n\n`
               )
             );
 
+            // 仅下发 pending 事件让前端面板进入「生成中」轮询态；真正的 DC 生成由前端在重生成
+            // 队列（含 prototype）排空后触发（见 requirement-shell.tsx processChangeQueue）。
+            if (dcShouldRegen) {
+              controller.enqueue(
+                encoder.encode(
+                  `event: devcontext_update\ndata: ${JSON.stringify({ pending: true })}\n\n`
+                )
+              );
+            }
+
             controller.enqueue(encoder.encode(`event: done\ndata: {}\n\n`));
+
+            // 落库变更完成总结（确保刷新页面/退出重进后仍可回显）。
+            const changeDoneMsg = `✅ 变更已处理完成，涉及 ${affectedOutputs.map((o) => OUTPUT_LABELS[o] ?? o).join("、")}。如需进一步调整请继续描述。`;
+            await addMessage(requirementId, "assistant", changeDoneMsg).catch(() => {});
           } catch (e) {
             const m = e instanceof Error ? e.message : String(e);
             controller.enqueue(

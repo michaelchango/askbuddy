@@ -11,13 +11,13 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const projectId = req.nextUrl.searchParams.get("projectId");
   if (projectId) {
+    // listRequirements 已按 updatedAt DESC 排序（idx_req_project 索引下推），
+    // route 层不再做内存 sort，避免无意义的 CPU 浪费。
     const data = await listRequirements(projectId);
-    data.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
     return NextResponse.json({ ok: true, data });
   }
   // 不带 projectId：返回当前用户全部需求（跨项目），按更新时间倒序
   const data = await listRequirementsForOwner(user.uid);
-  data.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
   return NextResponse.json({ ok: true, data });
 }
 

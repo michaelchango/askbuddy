@@ -3,7 +3,8 @@ import { db } from "@/lib/db";
 import { listConversations } from "@/lib/services/conversations";
 import { getRequirement } from "@/lib/services/requirements";
 import type { AITaskType } from "../models";
-import type { TaskContext, RequirementCardData } from "../types";
+import type { TaskContext, RequirementCardData, ChatMessage } from "../types";
+import { assertNoPrdUpstream } from "./ad2";
 
 // 步骤上下文（积累式）：按 step 加载上游输出物注入 prompt。
 export interface StepContext {
@@ -11,7 +12,7 @@ export interface StepContext {
   taskType: AITaskType;
   step: string; // StepName
   card?: Partial<RequirementCardData>;
-  history: Array<{ role: string; content: string }>;
+  history: ChatMessage[];
   upstream: Record<string, string>;
   // 变更模式：当前步骤已生成的文档内容（用于"基于现有文档精准修改"）
   existingDoc?: string;
@@ -63,6 +64,7 @@ export async function buildStepContext(
     research_analysis: "research_analysis",
     solution_writing: "design",
     prd_writing: "prd_writing",
+    devcontext: "prd_writing", // DevContext 归属于第 4 步，便于日志与状态归因
   };
 
   // 变更模式：读取当前步骤已生成的文档，供 prompt 做"现有文档 + 修改点"的精准修改
@@ -115,11 +117,35 @@ async function loadExistingDoc(
         | undefined;
       return markdown ? markdown.slice(0, 8000) : undefined;
     }
+    if (taskType === "devcontext") {
+      const rec = await db.get("dev_contexts", requirementId, "requirement_id");
+      const content = (rec as Record<string, unknown> | undefined)?.content as
+        | Record<string, unknown>
+        | undefined;
+      // 变更模式只回传内容段（meta/references 由系统重算），截断保护。
+      if (!content) return undefined;
+      const body: Record<string, unknown> = { ...content };
+      delete body.meta;
+      delete body.references;
+      delete body.$schema;
+      delete body.schema_version;
+      return JSON.stringify(body, null, 2).slice(0, 8000);
+    }
   } catch { /* 读取失败退化为全新生成 */ }
   return undefined;
 }
 
 // ---- 内部：按任务类型加载上游 ----
+//
+// 各上游的截断额度（字符）。DevContext 需要比 PRD 更完整的方案原文（方案是 DevContext
+// 最密的上游），故单独放宽；其余 taskType 维持原额度，避免回归。
+const UPSTREAM_LIMITS: Record<string, { ra: number; sol: number; proto: number }> = {
+  research_analysis: { ra: 4000, sol: 4000, proto: 2000 },
+  solution_writing: { ra: 4000, sol: 4000, proto: 2000 },
+  designing: { ra: 4000, sol: 4000, proto: 2000 },
+  prd_writing: { ra: 4000, sol: 4000, proto: 2000 },
+  devcontext: { ra: 6000, sol: 8000, proto: 3000 },
+};
 
 async function buildUpstream(
   requirementId: string,
@@ -127,6 +153,7 @@ async function buildUpstream(
   card?: Partial<RequirementCardData>
 ): Promise<Record<string, string>> {
   const upstream: Record<string, string> = {};
+  const limit = UPSTREAM_LIMITS[taskType] ?? { ra: 4000, sol: 4000, proto: 2000 };
 
   // 需求卡片始终是最基础的上游
   if (card && Object.keys(card).some((k) => {
@@ -136,13 +163,13 @@ async function buildUpstream(
     upstream["需求卡片"] = JSON.stringify(card, null, 2);
   }
 
-  if (["research_analysis", "solution_writing", "designing", "prd_writing"].includes(taskType)) {
+  if (["research_analysis", "solution_writing", "designing", "prd_writing", "devcontext"].includes(taskType)) {
     // 所有非对话任务都尝试加载调研分析结论
     const ra = await db.get("research_analysis", requirementId);
     if (ra) {
       const parts: string[] = [];
       const row = ra as Record<string, unknown>;
-      if (row.report) parts.push((row.report as string).slice(0, 4000));
+      if (row.report) parts.push((row.report as string).slice(0, limit.ra));
       if (row.user_stories) {
         parts.push("## 用户故事\n" + JSON.stringify(row.user_stories, null, 2));
       }
@@ -153,22 +180,26 @@ async function buildUpstream(
     }
   }
 
-  if (["solution_writing", "designing", "prd_writing"].includes(taskType)) {
-    // 方案设计/PRD：加载方案文档
+  if (["solution_writing", "designing", "prd_writing", "devcontext"].includes(taskType)) {
+    // 方案设计/PRD/DevContext：加载方案文档
     const sol = await db.get("solutions", requirementId);
     if (sol) {
       const doc = (sol as Record<string, unknown>).doc as string | undefined;
-      if (doc) upstream["产品方案文档"] = doc.slice(0, 4000);
+      if (doc) upstream["产品方案文档"] = doc.slice(0, limit.sol);
     }
   }
 
-  if (["prd_writing"].includes(taskType)) {
-    // PRD：额外加载原型信息
+  if (["prd_writing", "devcontext"].includes(taskType)) {
+    // PRD / DevContext：额外加载原型信息
     const proto = await db.get<{ structure?: unknown }>("prototypes", requirementId);
     if (proto?.structure) {
-      upstream["原型结构"] = JSON.stringify(proto.structure, null, 2).slice(0, 2000);
+      upstream["原型结构"] = JSON.stringify(proto.structure, null, 2).slice(0, limit.proto);
     }
   }
+
+  // AD-2 同源并列：DevContext 与 PRD 平行消费同一组上游，绝不以 PRD 为输入。
+  // 若未来有人为 devcontext 分支加载 prds，此断言会在开发期直接抛错。
+  assertNoPrdUpstream(upstream, taskType);
 
   return upstream;
 }

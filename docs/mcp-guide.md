@@ -148,16 +148,28 @@ Windows：`%APPDATA%\Claude\claude_desktop_config.json`）：
 
 ## 6. 工具清单
 
-所有工具均接收一个参数 `requirementId: string`（需求 ID），返回 JSON 文本。
+MCP Server 当前提供 **13 个工具（v2.0.0）**。除 `list_projects` / `list_requirements` / `search_knowledge` 外，
+其余工具均接收 `requirementId: string` 参数，返回 JSON 文本。
 
 | 工具名 | 说明 | 后端接口 | 返回结构 |
 |--------|------|----------|----------|
+| `list_projects` | 列出当前用户的所有项目 | `GET /api/mcp/projects` | `Project[]`（id / name / status 等） |
+| `list_requirements` | 列出某项目下的需求 | `GET /api/mcp/projects/{projectId}/requirements` | `Requirement[]`（id / title / status 等） |
 | `requirement_get` | 需求基本信息（卡片 + 四步状态） | `GET /api/mcp/requirement/{id}` | `getRequirementWithStatus` 结果（含步骤状态、当前阶段） |
-| `requirement_research` | 调研分析结论 | `GET /api/mcp/requirement/{id}/research` | `{ report, userStories, features }` |
-| `requirement_prototype` | 可交互 HTML 原型 + 页面结构 | `GET /api/mcp/requirement/{id}/prototype` | `{ version, structure, html }`（`html` 为完整 HTML 字符串） |
-| `requirement_prd` | PRD 文档（Markdown） | `GET /api/mcp/requirement/{id}/prd` | `{ version, markdown }` |
+| `requirement_research` | 调研分析结论（Markdown） | `GET /api/mcp/requirement/{id}/research` | `{ version, markdown, versions }` |
+| `requirement_solution` | 方案设计文档（Markdown） | `GET /api/mcp/requirement/{id}/solution` | `{ version, doc, versions }` |
+| `requirement_prototype` | 可交互 HTML 原型 + 页面结构 | `GET /api/mcp/requirement/{id}/prototype?includeHtml=true` | `{ version, structure, html, versions }`（`html` 为完整 HTML；默认不含 `html` 以轻量返回） |
+| `requirement_prd` | PRD 文档（Markdown） | `GET /api/mcp/requirement/{id}/prd`（`?version=` 读历史） | `{ version, markdown, versions }` |
+| `requirement_dev_context` | 整套「开发上下文」DevContext（JSON） | `GET /api/mcp/requirement/{id}/dev-context` | `{ content, status, completeness_score, applicable_count, present_count, version, updated_at }` |
+| `dev_context_business_rules` | 仅取「业务规则」段 | `GET /api/mcp/requirement/{id}/dev-context?section=business_rules` | `{ section, content, version, status }` |
+| `dev_context_data_structures` | 仅取「数据模型」段 | `GET /api/mcp/requirement/{id}/dev-context?section=data_structures` | `{ section, content, version, status }` |
+| `dev_context_api_specs` | 仅取「接口规范」段（api_requirements） | `GET /api/mcp/requirement/{id}/dev-context?section=api_requirements` | `{ section, content, version, status }` |
+| `dev_context_acceptance_criteria` | 仅取「验收标准」段 | `GET /api/mcp/requirement/{id}/dev-context?section=acceptance_criteria` | `{ section, content, version, status }` |
+| `search_knowledge` | 知识库检索（M2 占位） | `GET /api/mcp/knowledge/search?q=` | `{ query, results: [], notice }` |
 
-> 原型与 PRD 未生成时，对应接口返回 `not_found`，MCP 工具会如实返回错误文本。
+> 产物未生成时，对应接口返回 `not_found`，MCP 工具会如实返回错误文本。
+> `requirement_dev_context` 与 4 个 `dev_context_*` 工具共享同一路由，按 `section` 参数返回整份或单段；
+> 分段工具可显著降低单次负载，便于 AI 编码工具按需取用。
 
 ---
 
@@ -203,7 +215,7 @@ AI 会自行调用 `requirement_prd` / `requirement_prototype` / `requirement_re
 
 ```
 mcp/
-├── server.ts          # MCP Server 入口，注册 4 个 tool（stdio 传输）
+├── server.ts          # MCP Server 入口，注册 13 个 tool（v2.0.0，stdio 传输）
 ├── client.ts          # 平台 HTTP 客户端，封装 callPlatform（携带 PAT）
 ├── package.json       # 脚本：npm start / npm run build
 └── tsconfig.json     # NodeNext 编译配置

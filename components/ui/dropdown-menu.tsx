@@ -19,6 +19,8 @@ export interface DropdownMenuItemDef {
   icon?: ReactNode;
   /** 危险操作（如删除），文字与悬浮框使用红色调。 */
   danger?: boolean;
+  /** 禁用态：灰显且点击不触发 onSelect（用于尚无内容时的导出项）。 */
+  disabled?: boolean;
   onSelect: () => void;
 }
 
@@ -98,16 +100,22 @@ export function DropdownMenu({
                 key={it.label}
                 type="button"
                 role="menuitem"
+                disabled={it.disabled}
                 onClick={(e) => {
                   // 阻止默认/冒泡：菜单项位于 <Link> 内时，点击菜单项
                   // 不应冒泡触发父级导航（如需求详情页）。
                   e.preventDefault();
                   e.stopPropagation();
+                  if (it.disabled) return;
                   close();
                   it.onSelect();
                 }}
-                className={`flex w-full items-center gap-2 rounded-[6px] px-[10px] py-[8px] text-left text-[13.5px] font-medium transition-colors hover:bg-[#F2F0EB] ${
-                  it.danger ? "text-[#E5484D]" : "text-[#111111]"
+                className={`flex w-full items-center gap-2 rounded-[6px] px-[10px] py-[8px] text-left text-[13.5px] font-medium transition-colors ${
+                  it.disabled
+                    ? "cursor-not-allowed text-slate-300"
+                    : it.danger
+                      ? "text-[#E5484D] hover:bg-[#F2F0EB]"
+                      : "text-[#111111] hover:bg-[#F2F0EB]"
                 }`}
               >
                 {it.icon}
