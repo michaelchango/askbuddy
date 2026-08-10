@@ -563,6 +563,18 @@ export function ConversationPanel({
     return () => window.removeEventListener(EVT.LOCATE_SOURCE, handler);
   }, []);
 
+  // M3 · 监听全局 proposal 事件：生成 SSE 由 requirement-shell 转发，
+  // 后端把产物转为 pending 建议卡后即时刷新对话面板的建议列表。
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { requirementId?: string };
+      if (detail.requirementId !== rid) return;
+      mutateProposals();
+    };
+    window.addEventListener(EVT.PROPOSAL, handler);
+    return () => window.removeEventListener(EVT.PROPOSAL, handler);
+  }, [rid, mutateProposals]);
+
   // 卸载时清理可恢复错误的自动消失计时器，避免对已卸载组件 setState
   useEffect(() => {
     return () => {

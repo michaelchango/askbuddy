@@ -288,6 +288,11 @@ export function RequirementShell({
                   new CustomEvent(EVT.GEN_MESSAGE, { detail: { content: data.content, requirementId } })
                 );
               } catch { /* ignore */ }
+            } else if (eventType === "proposal") {
+              // M3 · 后端生成产物已转为待确认建议卡：通知对话面板即时刷新 pending 列表
+              window.dispatchEvent(
+                new CustomEvent(EVT.PROPOSAL, { detail: { requirementId } })
+              );
             } else if (eventType === "error") {
               // 后端生成流水线异常（如 EMAXCONNSESSION）：中断 SSE 读取，抛错给外层 catch
               let msg = "服务端生成异常";
@@ -709,6 +714,11 @@ export function RequirementShell({
               } catch {
                 /* ignore */
               }
+            } else if (eventType === "proposal") {
+              // M3 · 原型正常生成已转为待确认建议卡：通知对话面板即时刷新 pending 列表
+              window.dispatchEvent(
+                new CustomEvent(EVT.PROPOSAL, { detail: { requirementId } })
+              );
             } else if (eventType === "error") {
               // 后端原型流水线异常：中断 SSE 读取，抛错给外层 catch
               let msg = "原型生成异常";
