@@ -272,6 +272,35 @@ function isJsonbCol(table: string, col: string): boolean {
   return (JSONB_COLS[table] ?? []).includes(col);
 }
 
+/**
+ * 生成一段不会与 content 冲突的 PostgreSQL dollar-quote 标签。
+ * 从 "j" 开始，若 content 里包含该闭合 delimiter 则递增标签长度，
+ * 直到无冲突（实际 JSON 内容极少含 $j$ 形态子串，通常一次命中）。
+ */
+function dollarQuoteTag(content: string): string {
+  let tag = "j";
+  while (content.includes(`$${tag}$`)) {
+    tag += "j";
+    if (tag.length > 32) {
+      // 理论上不会发生；兜底：用随机后缀继续尝试，避免无限循环
+      tag = `j${Math.random().toString(36).slice(2, 10)}`;
+    }
+  }
+  return tag;
+}
+
+/**
+ * 把 JSON 值序列化为 PostgreSQL dollar-quoted jsonb 字面量。
+ * 相比单引号 + 反斜杠转义，dollar-quote 对换行、反斜杠、单引号都免疫，
+ * 可彻底规避 CloudBase exec-pgsql 网关对 JSONB 字符串的转义歧义（DATABASE_22P02）。
+ */
+function jsonbLit(v: unknown): string {
+  if (v === null || v === undefined) return "NULL"; // jsonb 列也允许 NOT NULL 约束下由调用方保证
+  const json = JSON.stringify(v);
+  const tag = dollarQuoteTag(json);
+  return `$${tag}$${json}$${tag}$::jsonb`;
+}
+
 /** 业务对象（代码键）→ [列名, 字面量] 列表（INSERT/UPDATE SET 用）。 */
 function toColumns(table: string, row: Row): Array<[string, string]> {
   const out: Array<[string, string]> = [];
@@ -279,7 +308,7 @@ function toColumns(table: string, row: Row): Array<[string, string]> {
     if (value === undefined) continue; // 省略 → PG 应用列默认值
     const col = toColumn(table, key);
     if (isJsonbCol(table, col)) {
-      out.push([col, `${lit(value)}::jsonb`]);
+      out.push([col, jsonbLit(value)]);
     } else {
       out.push([col, lit(value)]);
     }
