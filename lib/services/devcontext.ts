@@ -13,6 +13,7 @@ import {
   type SectionKey,
 } from "@/lib/schemas/devcontext";
 import { getRequirement } from "@/lib/services/requirements";
+import { getConversationTurn } from "@/lib/services/conversations";
 import type { OutputVersion } from "@/lib/services/outputs";
 import type { CompletenessReport, ConsistencyIssue } from "@/lib/services/devcontext-validate";
 
@@ -166,6 +167,10 @@ export async function saveDevContext(
     },
   });
 
+  // M3 · 填充 DevContext 各条目 _source.conversation_turn（分级溯源 + 验收红线回溯）
+  const turn = (await getConversationTurn(requirementId).catch(() => 0)) ?? 0;
+  if (turn > 0) injectConversationTurn(full, turn);
+
   // 写版本历史（异常容错：版本历史写入失败不阻断主表更新）
   try {
     await db.insert("dev_context_versions", {
@@ -209,3 +214,8 @@ export async function deleteDevContext(requirementId: string): Promise<void> {
   await db.removeBy("dev_context_versions", "requirement_id", requirementId);
   await db.remove("dev_contexts", requirementId, "requirement_id");
 }
+
+// M3 · DevContext 分级溯源辅助函数已抽到 db 无关的 lib/services/devcontext-source.ts，
+// 避免客户端组件引用时把 @cloudbase/node-sdk 拖进浏览器打包。
+export { firstSourceTurn } from "@/lib/services/devcontext-source";
+import { injectConversationTurn } from "@/lib/services/devcontext-source";

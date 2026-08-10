@@ -181,7 +181,11 @@ export const cardVersions = pgTable(
       .references(() => requirements.id, { onDelete: "cascade" }),
     version: integer("version").notNull(),
     card: jsonb("card").notNull(),
+    /** M3 字段级 _source：{ fieldName: Source } */
+    cardSource: jsonb("card_source"),
     note: text("note"),
+    /** M3 结构化变更记录 */
+    changelog: jsonb("changelog").notNull().default([]),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => ({
@@ -235,6 +239,8 @@ export const researchAnalysisVersions = pgTable(
     userStories: jsonb("user_stories"),
     features: jsonb("features"),
     note: text("note"),
+    /** M3 结构化变更记录 */
+    changelog: jsonb("changelog").notNull().default([]),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => ({
@@ -274,6 +280,8 @@ export const solutionVersions = pgTable(
     version: integer("version").notNull(),
     doc: text("doc"),
     note: text("note"),
+    /** M3 结构化变更记录 */
+    changelog: jsonb("changelog").notNull().default([]),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => ({
@@ -326,6 +334,8 @@ export const prototypeVersions = pgTable(
     htmlStorageKey: text("html_storage_key").notNull(),
     model: text("model"),
     note: text("note"),
+    /** M3 结构化变更记录 */
+    changelog: jsonb("changelog").notNull().default([]),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => ({
@@ -367,6 +377,8 @@ export const prdVersions = pgTable(
     version: integer("version").notNull(),
     markdown: text("markdown"),
     note: text("note"),
+    /** M3 结构化变更记录 */
+    changelog: jsonb("changelog").notNull().default([]),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => ({
@@ -488,5 +500,84 @@ export const devContextVersions = pgTable(
   (t) => ({
     uqVer: unique("uq_devctx_ver").on(t.requirementId, t.version),
     idxReq: index("idx_devctx_ver_req").on(t.requirementId, t.version),
+  })
+);
+
+// ---------------------------------------------------------------------------
+// M3 · 条目级 HITL + 分级溯源
+// ---------------------------------------------------------------------------
+
+// 建议卡：AI 产出先落此表，status=pending 等待用户决策。
+export const suggestions = pgTable(
+  "suggestions",
+  {
+    id: text("id").primaryKey(),
+    requirementId: text("requirement_id")
+      .notNull()
+      .references(() => requirements.id, { onDelete: "cascade" }),
+    /** research | solution | prototype | prd | dev_context */
+    targetType: text("target_type").notNull(),
+    /** 产物内定位路径（section.id / 字段名 / md anchor / page id） */
+    targetPath: text("target_path"),
+    /** add | modify | remove */
+    op: text("op").notNull(),
+    /** 建议的具体内容（accept/edit 后成为产物数据） */
+    payload: jsonb("payload").notNull(),
+    status: text("status").notNull().default("pending"),
+    /** 溯源（conversation_turn / knowledge_ids / confirmed_by / confirmed_at） */
+    source: jsonb("source"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    idxReq: index("idx_sug_req").on(t.requirementId, t.status),
+    ckTarget: check("ck_sug_target", sql`${t.targetType} IN ('research','solution','prototype','prd','dev_context')`),
+    ckOp: check("ck_sug_op", sql`${t.op} IN ('add','modify','remove')`),
+    ckStatus: check("ck_sug_status", sql`${t.status} IN ('pending','accepted','edited','ignored')`),
+  })
+);
+
+// 决策记录：每次 accept/edit/ignore 落一条（ignore 仅记 history，不写产物）。
+export const decisions = pgTable(
+  "decisions",
+  {
+    id: text("id").primaryKey(),
+    requirementId: text("requirement_id")
+      .notNull()
+      .references(() => requirements.id, { onDelete: "cascade" }),
+    suggestionId: text("suggestion_id")
+      .notNull()
+      .references(() => suggestions.id, { onDelete: "cascade" }),
+    summary: text("summary"),
+    /** 产生此建议的对话轮次（来自 conversations 序） */
+    conversationTurn: integer("conversation_turn"),
+    confirmedBy: text("confirmed_by"),
+    confirmedAt: ts("confirmed_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    idxSug: index("idx_dec_sug").on(t.suggestionId),
+    idxReq: index("idx_dec_req").on(t.requirementId),
+  })
+);
+
+// MD 章节级溯源映射（正文保持纯净）：anchor → source。
+export const docSections = pgTable(
+  "doc_sections",
+  {
+    id: text("id").primaryKey(),
+    requirementId: text("requirement_id")
+      .notNull()
+      .references(() => requirements.id, { onDelete: "cascade" }),
+    /** research | solution | prd */
+    targetType: text("target_type").notNull(),
+    version: integer("version"),
+    /** markdown 章节锚点（h2 的 slug） */
+    anchor: text("anchor").notNull(),
+    title: text("title"),
+    /** 该章节的 _source */
+    source: jsonb("source").notNull(),
+  },
+  (t) => ({
+    idxReq: index("idx_docsec_req").on(t.requirementId, t.targetType, t.version),
+    ckDocsecTarget: check("ck_docsec_target", sql`${t.targetType} IN ('research','solution','prd')`),
   })
 );

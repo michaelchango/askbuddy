@@ -128,7 +128,9 @@ CREATE TABLE card_versions (
   requirement_id TEXT        NOT NULL,
   version        INTEGER     NOT NULL,
   card           JSONB       NOT NULL,
+  card_source    JSONB       NULL,              -- 字段级 _source（M3）：{ fieldName: Source }
   note           TEXT        NULL,
+  changelog      JSONB       NOT NULL DEFAULT '[]'::jsonb,  -- 结构化变更记录（M3）
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT pk_card_versions PRIMARY KEY (id),
   CONSTRAINT uq_card_ver UNIQUE (requirement_id, version),
@@ -166,6 +168,7 @@ CREATE TABLE research_analysis_versions (
   user_stories   JSONB       NULL,
   features       JSONB       NULL,
   note           TEXT        NULL,
+  changelog      JSONB       NOT NULL DEFAULT '[]'::jsonb,  -- 结构化变更记录（M3）
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT pk_research_analysis_versions PRIMARY KEY (id),
   CONSTRAINT uq_ra_ver UNIQUE (requirement_id, version),
@@ -196,6 +199,7 @@ CREATE TABLE solution_versions (
   version        INTEGER     NOT NULL,
   doc            TEXT        NULL,
   note           TEXT        NULL,
+  changelog      JSONB       NOT NULL DEFAULT '[]'::jsonb,  -- 结构化变更记录（M3）
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT pk_solution_versions PRIMARY KEY (id),
   CONSTRAINT uq_sol_ver UNIQUE (requirement_id, version),
@@ -235,6 +239,7 @@ CREATE TABLE prototype_versions (
   html_storage_key TEXT        NOT NULL,
   model            TEXT        NULL,
   note             TEXT        NULL,
+  changelog      JSONB       NOT NULL DEFAULT '[]'::jsonb,  -- 结构化变更记录（M3）
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT pk_prototype_versions PRIMARY KEY (id),
   CONSTRAINT uq_proto_ver UNIQUE (requirement_id, version),
@@ -269,6 +274,7 @@ CREATE TABLE prd_versions (
   version        INTEGER     NOT NULL,
   markdown       TEXT        NULL,
   note           TEXT        NULL,
+  changelog      JSONB       NOT NULL DEFAULT '[]'::jsonb,  -- 结构化变更记录（M3）
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT pk_prd_versions PRIMARY KEY (id),
   CONSTRAINT uq_prd_ver UNIQUE (requirement_id, version),
@@ -307,6 +313,68 @@ CREATE TABLE dev_context_versions (
   UNIQUE (requirement_id, version)
 );
 CREATE INDEX idx_devctx_ver_req ON dev_context_versions (requirement_id, version DESC);
+
+
+-- ============================================================
+-- M3 · 条目级 HITL + 分级溯源
+-- ============================================================
+
+-- ---------------- 建议卡（AI 产出先落此表，pending 等待用户决策） ----------------
+-- 一条 AI 建议 = 一次对用户产出的修改提议（add/modify/remove）。
+-- 经 lib/services/proposals.ts 写入；用户 accept/edit/ignore 后才真正写库。
+CREATE TABLE suggestions (
+  id              TEXT        NOT NULL,
+  requirement_id  TEXT        NOT NULL,
+  target_type     TEXT        NOT NULL
+                    CHECK (target_type IN ('research', 'solution', 'prototype', 'prd', 'dev_context')),
+  target_path     TEXT        NULL,              -- 产物内定位路径（section.id / 字段名 / md anchor / page id）
+  op              TEXT        NOT NULL
+                    CHECK (op IN ('add', 'modify', 'remove')),
+  payload         JSONB       NOT NULL,           -- 建议的具体内容（accept/edit 后成为产物数据）
+  status          TEXT        NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'accepted', 'edited', 'ignored')),
+  source          JSONB       NULL,               -- 溯源（conversation_turn / knowledge_ids / confirmed_by / confirmed_at）
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT pk_suggestions PRIMARY KEY (id),
+  CONSTRAINT fk_sug_req FOREIGN KEY (requirement_id)
+    REFERENCES requirements(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_sug_req ON suggestions (requirement_id, status);
+
+-- ---------------- 决策记录（每次 accept/edit/ignore 落一条） ----------------
+-- ignore 仅记 history（summary='ignored'），不写任何产物（AD-4 红线）。
+CREATE TABLE decisions (
+  id               TEXT        NOT NULL,
+  requirement_id   TEXT        NOT NULL,
+  suggestion_id    TEXT        NOT NULL REFERENCES suggestions(id) ON DELETE CASCADE,
+  summary          TEXT        NULL,              -- 人类可读摘要（如 'ignored' / 'accepted: 新增扫码登录'）
+  conversation_turn INTEGER    NULL,              -- 产生此建议的对话轮次（来自 conversations 序）
+  confirmed_by     TEXT        NULL,              -- 确认人（M3 先用固定/会话身份）
+  confirmed_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT pk_decisions PRIMARY KEY (id),
+  CONSTRAINT fk_dec_req FOREIGN KEY (requirement_id)
+    REFERENCES requirements(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_dec_sug ON decisions (suggestion_id);
+CREATE INDEX idx_dec_req ON decisions (requirement_id);
+
+-- ---------------- MD 章节级溯源映射（正文保持纯净） ----------------
+-- anchor → source 双向映射：渲染时按 h2 锚点查表，得到该章节的 _source。
+-- target_type 覆盖 research / solution / prd（三种 Markdown 产物）。
+CREATE TABLE doc_sections (
+  id              TEXT        NOT NULL,
+  requirement_id  TEXT        NOT NULL,
+  target_type     TEXT        NOT NULL
+                    CHECK (target_type IN ('research', 'solution', 'prd')),
+  version         INTEGER     NULL,
+  anchor          TEXT        NOT NULL,           -- markdown 章节锚点（h2 的 slug）
+  title           TEXT        NULL,               -- 章节标题
+  source          JSONB       NOT NULL,           -- 该章节的 _source
+  CONSTRAINT pk_doc_sections PRIMARY KEY (id),
+  CONSTRAINT fk_docsec_req FOREIGN KEY (requirement_id)
+    REFERENCES requirements(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_docsec_req ON doc_sections (requirement_id, target_type, version);
 
 
 -- ---------------- API Token（PAT） ----------------

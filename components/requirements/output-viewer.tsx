@@ -8,7 +8,16 @@ import { extractResearchAnalysis } from "@/lib/ai/parse";
 import { buildResearchAnalysisMarkdown } from "@/lib/render/research-analysis";
 import MarkdownRenderer from "./markdown-renderer";
 import { ICONS } from "./output-sidebar";
+import { EVT } from "@/lib/events";
 import type { OutputContent, OutputType } from "@/lib/services/outputs";
+
+// outputType/subType → doc_sections 的 target_type（章节级溯源用）
+function docSectionTarget(outputType: OutputType, subType?: string): string | null {
+  if (outputType === "research_analysis") return "research";
+  if (outputType === "design") return subType === "solution" ? "solution" : null;
+  if (outputType === "prd") return "prd";
+  return null;
+}
 
 // 原 components/requirements/markdown.tsx 只是给 MarkdownRenderer 套一层排版容器，
 // 且仅本文件使用，M0 已内联至此并删除该中转文件（少一层无意义的间接跳转）。
@@ -80,6 +89,29 @@ export function OutputViewer({
     (u: string) => api<OutputContent>(u)
   );
 
+  // 最新版本号（用于溯源映射的版本参数）
+  const current = version ?? data?.version ?? null;
+
+  // M3 · 章节级溯源：拉取 doc_sections 映射（anchor → source），供「来源」侧栏定位回溯
+  const docTarget = docSectionTarget(outputType, subType);
+  const { data: docSections } = useSWR<
+    Array<{ id: string; anchor: string; title: string; source: { conversation_turn?: number | null } | null }>
+  >(
+    docTarget && !generating
+      ? `/api/requirements/${requirementId}/doc-sections?targetType=${docTarget}${current != null ? `&version=${current}` : ""}`
+      : null,
+    (u: string) => fetch(u).then((r) => r.json()).then((j) => j.data ?? []),
+    { revalidateOnFocus: false }
+  );
+
+  // M3 · 点来源 chip → 跳回产生该章节的对话轮次（验收红线交互）
+  function locateSource(conversationTurn?: number | null) {
+    if (conversationTurn == null) return;
+    window.dispatchEvent(
+      new CustomEvent(EVT.LOCATE_SOURCE, { detail: { conversationTurn } })
+    );
+  }
+
   // 切换到新输出物时重置为最新版本
   useEffect(() => {
     setVersion(null);
@@ -150,7 +182,6 @@ export function OutputViewer({
   }, [outputType, subType, version]);
 
   const versions = data?.versions ?? [];
-  const current = version ?? data?.version ?? null;
   const idx = versions.findIndex((v) => v.version === current);
   const canPrev = idx > 0;
   const canNext = idx >= 0 && idx < versions.length - 1;
@@ -322,6 +353,28 @@ export function OutputViewer({
                   <Markdown content={data.content} />
                 ) : (
                   <div className="text-sm text-slate-400">暂无内容</div>
+                )}
+                {/* M3 · 章节来源侧栏：点 chip 回溯到产生该章节的对话轮次 */}
+                {docSections && docSections.length > 0 && (
+                  <div className="mt-5 border-t border-slate-100 pt-3">
+                    <div className="mb-1.5 text-[12px] font-medium text-slate-500">
+                      章节来源（点击回溯对话）
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {docSections.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => locateSource(s.source?.conversation_turn)}
+                          title={s.title}
+                          className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-brand/5 hover:text-brand"
+                        >
+                          {s.title.length > 14 ? `${s.title.slice(0, 14)}…` : s.title}
+                          {s.source?.conversation_turn != null ? ` · #${s.source.conversation_turn}` : ""}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             )}

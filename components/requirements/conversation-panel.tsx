@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import useSWR, { mutate } from "swr";
 import { cn } from "@/lib/utils";
 import { EVT } from "@/lib/events";
-import { ArrowUp, Link2, Plus, User, X, Copy, Check } from "lucide-react";
+import { ArrowUp, Link2, Plus, User, X, Copy, Check, Loader2 } from "lucide-react";
 import { ReferencePanel, type PickedReference } from "./reference-panel";
+import { ProposalCard, type SuggestionView, type RespondData } from "./proposal-card";
 import type { OutputMeta, OutputType } from "@/lib/services/outputs";
 import type { RequirementStatus } from "@/types";
 
@@ -66,6 +67,15 @@ export function ConversationPanel({
     { revalidateOnFocus: false, revalidateOnReconnect: false }
   );
   const existingOutputs = (outputs ?? []).filter((o) => o.exists);
+
+  // M3 · 待确认建议卡（条目级 HITL）。生成产物后由后端写入 suggestions(pending)，
+  // 此处拉取 pending 列表渲染；响应后即时刷新。accept/edit/ignore 后该条从列表中移除。
+  const { data: proposals, mutate: mutateProposals } = useSWR<SuggestionView[]>(
+    rid ? `/api/requirements/${rid}/proposals?status=pending` : null,
+    (u: string) => fetch(u).then((r) => r.json()).then((j) => j.data ?? []),
+    { revalidateOnFocus: false, revalidateOnReconnect: false }
+  );
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const [messages, setMessages] = useState<Msg[]>([]);
   const [draft, setDraft] = useState("");
@@ -320,6 +330,9 @@ export function ConversationPanel({
                 );
               } catch { /* ignore */ }
             }
+          } else if (event === "proposal") {
+            // M3 · AI 生成产物 → 新建议卡到达，即时刷新 pending 列表（无需等待轮询）
+            if (currentId) mutateProposals();
           } else if (event === "change_update") {
             // AI 检测到变更点 → 通知 shell 自动执行变更更新队列
             if (currentId) {
@@ -483,6 +496,73 @@ export function ConversationPanel({
     return () => window.removeEventListener(EVT.GEN_ERROR, handler);
   }, [rid]);
 
+  // M3 · 单条建议决策后的处理：刷新列表 + 刷新产物 + 阶段闸门（若全部解决）
+  function handleProposalResolved(data: RespondData) {
+    mutateProposals();
+    if (rid) mutate(`/api/requirements/${rid}/outputs`);
+    if (data.proceedPrompt) {
+      window.dispatchEvent(
+        new CustomEvent(EVT.PROCEED_PROMPT, {
+          detail: { requirementId: rid, ...data.proceedPrompt },
+        })
+      );
+    }
+  }
+
+  // M3 · 全部接受（R7 缓解）：一次性 accept 所有 pending 建议
+  async function bulkAcceptAll() {
+    if (!rid) return;
+    setBulkBusy(true);
+    try {
+      const res = await fetch(`/api/requirements/${rid}/proposals/bulk-accept`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "批量接受失败");
+      mutateProposals();
+      if (rid) mutate(`/api/requirements/${rid}/outputs`);
+      for (const p of json.data?.proceedPrompts ?? []) {
+        window.dispatchEvent(
+          new CustomEvent(EVT.PROCEED_PROMPT, { detail: { requirementId: rid, ...p } })
+        );
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "批量接受失败");
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  // M3 · 定位来源：从产物条目跳回对应建议卡并高亮（验收红线交互落点）
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { suggestionId?: string; conversationTurn?: number };
+      if (!scrollRef.current) return;
+      if (detail.suggestionId) {
+        const el = scrollRef.current.querySelector(`[data-proposal-id="${detail.suggestionId}"]`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.classList.add("ring-2", "ring-brand", "ring-offset-2");
+          setTimeout(() => el.classList.remove("ring-2", "ring-brand", "ring-offset-2"), 2200);
+          return;
+        }
+      }
+      if (detail.conversationTurn != null) {
+        const el = scrollRef.current.querySelector(`[data-turn="${detail.conversationTurn}"]`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.classList.add("ring-2", "ring-brand", "ring-offset-2");
+          setTimeout(() => el.classList.remove("ring-2", "ring-brand", "ring-offset-2"), 2200);
+          return;
+        }
+      }
+      // 无对应元素（如建议已被决策移除）→ 滚动到底部
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    };
+    window.addEventListener(EVT.LOCATE_SOURCE, handler);
+    return () => window.removeEventListener(EVT.LOCATE_SOURCE, handler);
+  }, []);
+
   // 卸载时清理可恢复错误的自动消失计时器，避免对已卸载组件 setState
   useEffect(() => {
     return () => {
@@ -493,9 +573,10 @@ export function ConversationPanel({
   return (
     <div className="flex h-full flex-col bg-white">
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto [scrollbar-gutter:stable] px-6 py-[18px]">
-        {messages.map((m) => (
+        {messages.map((m, i) => (
           <div
             key={m.id}
+            data-turn={i + 1}
             className={`flex items-start gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}
           >
             {m.role === "assistant" ? (
@@ -580,6 +661,34 @@ export function ConversationPanel({
         {messages.length === 0 && !draft && (
           <div className="py-10 text-center text-sm text-slate-400">
             发送第一条消息，开始创建你的需求。
+          </div>
+        )}
+
+        {/* M3 · 待确认建议卡列表（条目级 HITL 入口） */}
+        {proposals && proposals.length > 0 && (
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-medium text-slate-400">
+                {proposals.length} 条待确认建议
+              </span>
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={bulkAcceptAll}
+                className="flex items-center gap-1 rounded-md bg-brand px-2.5 py-1 text-[12px] font-medium text-white transition-colors hover:bg-[#e2570c] disabled:opacity-50"
+              >
+                {bulkBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                全部接受
+              </button>
+            </div>
+            {proposals.map((s) => (
+              <ProposalCard
+                key={s.id}
+                requirementId={rid as string}
+                suggestion={s}
+                onResolved={handleProposalResolved}
+              />
+            ))}
           </div>
         )}
       </div>

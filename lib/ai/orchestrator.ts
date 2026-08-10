@@ -5,8 +5,14 @@ import { streamAI, callAI } from "./client";
 import { extractReplyAndCard, extractResearchAnalysis, extractMarkdown } from "./parse";
 import { saveCardConnector } from "./connectors/internal/save-card";
 import { getOutput, saveResearchAnalysis, saveSolution, savePRD, type OutputType } from "@/lib/services/outputs";
-import { listConversations } from "@/lib/services/conversations";
+import { listConversations, getConversationTurn } from "@/lib/services/conversations";
 import { extractCardPrompt } from "./prompts/extract-card";
+import {
+  createProposal,
+  type ProposalTargetType,
+  type ProposalOp,
+  type ProposalPayload,
+} from "@/lib/services/proposals";
 import type { ChatMessage, RequirementCardData } from "./types";
 import type { AITaskType } from "./models";
 
@@ -162,6 +168,79 @@ export async function finalizeStep(
     const markdown = extractMarkdown(fullText);
     const version = await savePRD(requirementId, markdown);
     return { type: "prd", result: { markdown, version } };
+  }
+
+  throw new Error(`未知任务类型：${taskType}`);
+}
+
+// M3 · 条目级 HITL 生成写回（正常模式）：AI 产出先以「建议卡」形态落 suggestions(pending)，
+// 不直写产物表；落库推迟到用户 accept/edit（proposals.respondProposal）。
+// 改造前 finalizeStep 按 taskType 直写库；改造后正常生成走此分支，change 模式仍走 finalizeStep。
+export interface ProposeResult {
+  type: string;
+  suggestionId: string;
+  targetType: ProposalTargetType;
+  targetPath: string | null;
+  op: ProposalOp;
+  payload: ProposalPayload;
+  /** 产生此建议的对话轮次（用于 _source.conversation_turn） */
+  conversationTurn: number | null;
+}
+
+export async function proposeStep(
+  taskType: AITaskType,
+  requirementId: string,
+  fullText: string
+): Promise<ProposeResult> {
+  const conversationTurn = await getConversationTurn(requirementId).catch(() => null);
+
+  if (taskType === "research_analysis") {
+    const output = extractResearchAnalysis(fullText);
+    const targetType: ProposalTargetType = "research";
+    const payload: ProposalPayload = {
+      report: output.report,
+      userStories: output.userStories as unknown[],
+      features: output.features as unknown[],
+    };
+    const suggestionId = await createProposal({
+      requirementId,
+      targetType,
+      targetPath: null,
+      op: "add",
+      payload,
+      conversationTurn: conversationTurn ?? undefined,
+    });
+    return { type: targetType, suggestionId, targetType, targetPath: null, op: "add", payload, conversationTurn };
+  }
+
+  if (taskType === "solution_writing") {
+    const doc = extractMarkdown(fullText);
+    const targetType: ProposalTargetType = "solution";
+    const payload: ProposalPayload = { doc };
+    const suggestionId = await createProposal({
+      requirementId,
+      targetType,
+      targetPath: null,
+      op: "add",
+      payload,
+      conversationTurn: conversationTurn ?? undefined,
+    });
+    return { type: targetType, suggestionId, targetType, targetPath: null, op: "add", payload, conversationTurn };
+  }
+
+  if (taskType === "prd_writing") {
+    const markdown = extractMarkdown(fullText);
+    const targetType: ProposalTargetType = "prd";
+    const payload: ProposalPayload = { markdown };
+    const suggestionId = await createProposal({
+      requirementId,
+      targetType,
+      targetPath: null,
+      op: "add",
+      payload,
+      conversationTurn: conversationTurn ?? undefined,
+    });
+    return { type: targetType, suggestionId, targetType, targetPath: null, op: "add", payload, conversationTurn };
   }
 
   throw new Error(`未知任务类型：${taskType}`);

@@ -3,6 +3,8 @@
 node_modules/
 .next/
 .next-tmp/
+.next-validate-*/
+.next-stale-*/
 out/
 build/
 

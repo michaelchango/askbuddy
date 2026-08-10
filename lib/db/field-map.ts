@@ -35,6 +35,9 @@ export const TABLES: ReadonlySet<string> = new Set([
   "objects",
   "dev_contexts",
   "dev_context_versions",
+  "suggestions",
+  "decisions",
+  "doc_sections",
 ]);
 
 /** 代码键 → PG 列名。同名项也必须显式列出（见维护约定 2）。 */
@@ -97,7 +100,9 @@ export const FIELD_MAP: Readonly<Record<string, Readonly<Record<string, string>>
     requirement_id: "requirement_id",
     version: "version",
     card: "card",
+    card_source: "card_source", // M3 字段级 _source
     note: "note",
+    changelog: "changelog", // M3 结构化变更记录
     created_at: "created_at",
   },
 
@@ -124,6 +129,7 @@ export const FIELD_MAP: Readonly<Record<string, Readonly<Record<string, string>>
     user_stories: "user_stories",
     features: "features",
     note: "note",
+    changelog: "changelog", // M3 结构化变更记录
     created_at: "created_at",
   },
 
@@ -143,6 +149,7 @@ export const FIELD_MAP: Readonly<Record<string, Readonly<Record<string, string>>
     version: "version",
     doc: "doc",
     note: "note",
+    changelog: "changelog", // M3 结构化变更记录
     created_at: "created_at",
   },
 
@@ -167,6 +174,7 @@ export const FIELD_MAP: Readonly<Record<string, Readonly<Record<string, string>>
     html_storage_key: "html_storage_key",
     model: "model",
     note: "note", // 代码从不写
+    changelog: "changelog", // M3 结构化变更记录
     created_at: "created_at",
   },
 
@@ -186,6 +194,7 @@ export const FIELD_MAP: Readonly<Record<string, Readonly<Record<string, string>>
     version: "version",
     markdown: "markdown",
     note: "note",
+    changelog: "changelog", // M3 结构化变更记录
     created_at: "created_at",
   },
 
@@ -243,6 +252,39 @@ export const FIELD_MAP: Readonly<Record<string, Readonly<Record<string, string>>
     note: "note",
     created_at: "created_at",
   },
+
+  // ---------------- M3 新增表 ----------------
+  suggestions: {
+    id: "id",
+    requirement_id: "requirement_id",
+    target_type: "target_type",
+    target_path: "target_path",
+    op: "op",
+    payload: "payload",
+    status: "status",
+    source: "source",
+    created_at: "created_at",
+  },
+
+  decisions: {
+    id: "id",
+    requirement_id: "requirement_id",
+    suggestion_id: "suggestion_id",
+    summary: "summary",
+    conversation_turn: "conversation_turn",
+    confirmed_by: "confirmed_by",
+    confirmed_at: "confirmed_at",
+  },
+
+  doc_sections: {
+    id: "id",
+    requirement_id: "requirement_id",
+    target_type: "target_type",
+    version: "version",
+    anchor: "anchor",
+    title: "title",
+    source: "source",
+  },
 };
 
 /** PG 列名 → 代码键（由 FIELD_MAP 反转，构建期一次性生成）。 */
@@ -279,6 +321,9 @@ export const TIMESTAMP_COLS: Readonly<Record<string, readonly string[]>> = {
   objects: ["created_at", "updated_at"],
   dev_contexts: ["updated_at"],
   dev_context_versions: ["created_at"],
+  suggestions: ["created_at"], // M3
+  decisions: ["confirmed_at"], // M3
+  doc_sections: [], // M3（无时间戳列）
 };
 
 /**
@@ -311,6 +356,9 @@ export const JSONB_COLS: Readonly<Record<string, readonly string[]>> = {
   objects: [],
   dev_contexts: ["content", "upstream_ids"],
   dev_context_versions: ["content", "changelog"],
+  suggestions: ["payload", "source"], // M3
+  decisions: [], // M3（无 JSONB 列）
+  doc_sections: ["source"], // M3
 };
 
 /**
@@ -367,6 +415,9 @@ export const ALLOWED_ID_KEYS: Readonly<Record<string, readonly string[]>> = {
   objects: ["id"],
   dev_contexts: ["requirement_id"],       // requirement_id 是 PRIMARY KEY
   dev_context_versions: ["id"],            // id 是 PRIMARY KEY（复合 id 惯例）
+  suggestions: ["id"], // M3
+  decisions: ["id"], // M3
+  doc_sections: ["id"], // M3
 };
 
 /**
@@ -393,4 +444,7 @@ export const ORDER_HINT: Readonly<Record<string, string | undefined>> = {
   objects: "created_at",
   dev_contexts: "updated_at",
   dev_context_versions: "created_at",
+  suggestions: "created_at", // M3
+  decisions: "confirmed_at", // M3
+  doc_sections: "created_at", // M3
 };

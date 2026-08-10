@@ -84,6 +84,16 @@ function MarkdownRendererInner({
   content: string;
   disableMermaid?: boolean;
 }) {
+  // 提取 React 子节点中的纯文本（用于生成 h2 锚点，公式与 proposals.ts splitMarkdownSections 一致）
+  const nodeText = (node: React.ReactNode): string => {
+    if (node == null) return "";
+    if (typeof node === "string" || typeof node === "number") return String(node);
+    if (Array.isArray(node)) return node.map(nodeText).join("");
+    if (typeof node === "object" && "props" in (node as unknown as Record<string, unknown>)) {
+      return nodeText((node as { props?: { children?: React.ReactNode } }).props?.children);
+    }
+    return "";
+  };
   return (
     <Markdown
       remarkPlugins={[remarkGfm]}
@@ -91,9 +101,20 @@ function MarkdownRendererInner({
         h1: ({ children }) => (
           <h1 className="mt-5 mb-2 text-xl font-bold text-slate-900">{children}</h1>
         ),
-        h2: ({ children }) => (
-          <h2 className="mt-5 mb-2 text-lg font-semibold text-slate-900">{children}</h2>
-        ),
+        h2: ({ children }) => {
+          // M3 · 章节级溯源：h2 挂 id + data-source-anchor，正文保持纯净，
+          // 溯源经 doc_sections 表 anchor → source 映射（渲染时按锚点查表）。
+          const slug = nodeText(children).trim().replace(/\s+/g, "-");
+          return (
+            <h2
+              id={slug}
+              data-source-anchor={slug}
+              className="mt-5 mb-2 scroll-mt-4 text-lg font-semibold text-slate-900"
+            >
+              {children}
+            </h2>
+          );
+        },
         h3: ({ children }) => (
           <h3 className="mt-4 mb-1.5 text-base font-semibold text-slate-800">{children}</h3>
         ),

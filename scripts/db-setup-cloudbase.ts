@@ -124,6 +124,7 @@ async function main(): Promise<void> {
     "solutions", "solution_versions", "prototypes", "prototype_versions",
     "prds", "prd_versions", "api_tokens", "share_tokens", "objects",
     "dev_contexts", "dev_context_versions",
+    "suggestions", "decisions", "doc_sections",
   ];
   const rows = await execPgSql<{ t: string }>(
     `SELECT table_name AS t FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'`

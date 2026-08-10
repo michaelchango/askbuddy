@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import useSWR from "swr";
-import { ChevronDown, ChevronRight, Download, RefreshCw, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, RefreshCw, Loader2, ArrowUpLeft } from "lucide-react";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import {
   renderMarkdown,
@@ -10,6 +10,8 @@ import {
   renderClaudeMd,
   renderPrompt,
 } from "@/lib/services/devcontext-render";
+import { firstSourceTurn } from "@/lib/services/devcontext-source";
+import { EVT } from "@/lib/events";
 import type { DevContext } from "@/lib/schemas/devcontext";
 
 interface DevContextApiData {
@@ -104,6 +106,13 @@ export function DevContextPanel({
   const hasContent = !!data?.content;
   const score = data?.completeness_score ?? 0;
   const isLow = hasContent && score < 0.7;
+  // M3 · 第一个可回溯的对话轮次（验收红线：DevContext 条目一键回溯到产生它的对话）
+  const firstTurn = hasContent ? firstSourceTurn(data?.content) : null;
+
+  function backToSource() {
+    if (firstTurn == null) return;
+    window.dispatchEvent(new CustomEvent(EVT.LOCATE_SOURCE, { detail: { conversationTurn: firstTurn } }));
+  }
 
   async function regenerate() {
     setRegenerating(true);
@@ -173,6 +182,17 @@ export function DevContextPanel({
         </button>
 
         <div className="flex items-center gap-1">
+          {firstTurn != null && (
+            <button
+              type="button"
+              onClick={backToSource}
+              title={`回溯到产生它的对话 #${firstTurn}`}
+              className="flex h-7 items-center gap-1 rounded-md px-2 text-[12px] font-medium text-slate-500 transition-colors hover:bg-[#F2F0EB] hover:text-slate-700"
+            >
+              <ArrowUpLeft className="h-3.5 w-3.5" />
+              回溯对话
+            </button>
+          )}
           <button
             type="button"
             onClick={regenerate}

@@ -46,3 +46,21 @@ export async function addMessage(
   await db.insert("conversations", row);
   return row;
 }
+
+// M3 · 对话轮次序号。
+// _source.conversation_turn 与「定位来源」跳转依赖此序号（来自 M0 conversations 表，
+// listConversations 按 id 升序即对话轮次序）。
+// - 不传 messageId：返回「当前对话轮次」（即现有消息总数），作为本次生成建议的溯源锚点。
+// - 传 messageId：返回该消息在列表中的 1-based 序号（用于精确回溯某条消息）。
+export async function getConversationTurn(
+  requirementId: string,
+  messageId?: number
+): Promise<number | null> {
+  if (messageId != null) {
+    const all = await listConversations(requirementId);
+    const idx = all.findIndex((c) => c.id === messageId);
+    return idx >= 0 ? idx + 1 : null;
+  }
+  const all = await listConversations(requirementId);
+  return all.length;
+}

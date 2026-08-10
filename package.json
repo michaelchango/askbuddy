@@ -15,6 +15,7 @@
     "db:studio": "drizzle-kit studio",
     "db:check": "tsx scripts/check-db-contract.ts",
     "db:setup:cloudbase": "tsx scripts/db-setup-cloudbase.ts",
+    "db:migrate:m3": "tsx scripts/db-migrate-m3.ts",
     "db:probe": "tsx scripts/probe-cloudbase-pg.ts",
     "verify:embedding": "tsx scripts/verify-embedding.ts",
     "test": "tsx --test lib/schemas/devcontext.test.ts lib/services/devcontext-validate.test.ts lib/services/devcontext-render.test.ts lib/ai/context/builder.test.ts",
