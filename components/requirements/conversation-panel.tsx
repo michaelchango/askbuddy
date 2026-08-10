@@ -499,7 +499,12 @@ export function ConversationPanel({
   // M3 · 单条建议决策后的处理：刷新列表 + 刷新产物 + 阶段闸门（若全部解决）
   function handleProposalResolved(data: RespondData) {
     mutateProposals();
-    if (rid) mutate(`/api/requirements/${rid}/outputs`);
+    if (rid) {
+      // 通知输出面板立即刷新（SWR 精确 key 匹配，用事件比 mutate 前缀更可靠）
+      window.dispatchEvent(
+        new CustomEvent(EVT.OUTPUT_REFRESH, { detail: { requirementId: rid } })
+      );
+    }
     if (data.proceedPrompt) {
       window.dispatchEvent(
         new CustomEvent(EVT.PROCEED_PROMPT, {
@@ -520,7 +525,11 @@ export function ConversationPanel({
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "批量接受失败");
       mutateProposals();
-      if (rid) mutate(`/api/requirements/${rid}/outputs`);
+      if (rid) {
+        window.dispatchEvent(
+          new CustomEvent(EVT.OUTPUT_REFRESH, { detail: { requirementId: rid } })
+        );
+      }
       for (const p of json.data?.proceedPrompts ?? []) {
         window.dispatchEvent(
           new CustomEvent(EVT.PROCEED_PROMPT, { detail: { requirementId: rid, ...p } })

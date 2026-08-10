@@ -23,6 +23,8 @@ export const EVT = {
   PROPOSAL: "askbuddy:proposal",
   /** M3 · 定位来源：从产物条目跳回产生它的那轮对话并高亮建议卡 */
   LOCATE_SOURCE: "askbuddy:locate-source",
+  /** M3 · 建议卡决议后通知输出面板刷新产物（接受/编辑/忽略后右侧即时显示正式内容） */
+  OUTPUT_REFRESH: "askbuddy:output-refresh",
 } as const;
 
 export type EvtName = (typeof EVT)[keyof typeof EVT];
