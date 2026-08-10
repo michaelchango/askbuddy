@@ -196,12 +196,16 @@ export async function proposeStep(
 
   if (taskType === "research_analysis") {
     const output = extractResearchAnalysis(fullText);
+    console.error(
+      `[proposeStep|diag] research outputType=${typeof output} reportType=${typeof output.report} reportLen=${output.report?.length} fullTextLen=${fullText?.length}`
+    );
     const targetType: ProposalTargetType = "research";
     const payload: ProposalPayload = {
       report: output.report,
       userStories: output.userStories as unknown[],
       features: output.features as unknown[],
     };
+    console.error(`[proposeStep|diag] payloadType=${typeof payload} payload=`, JSON.stringify(payload).slice(0, 300));
     const suggestionId = await createProposal({
       requirementId,
       targetType,

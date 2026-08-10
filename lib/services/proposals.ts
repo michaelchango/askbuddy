@@ -234,6 +234,29 @@ export interface CreateProposalInput {
 
 /** 创建一条 pending 建议（AI 产出先落 suggestions，不写产物）。 */
 export async function createProposal(input: CreateProposalInput): Promise<string> {
+  // 【诊断日志】M3 建议卡 payload 类型异常排查
+  console.error(
+    `[createProposal|diag] targetType=${input.targetType} payloadType=${typeof input.payload} isArray=${Array.isArray(input.payload)} payload=`,
+    JSON.stringify(input.payload).slice(0, 500)
+  );
+
+  let payload = input.payload;
+  if (typeof payload === "string") {
+    // 防御：若上游误把字符串当 payload，按 targetType 尽量恢复为对象
+    console.error(`[createProposal|warn] payload 为字符串，尝试按 ${input.targetType} 包装为对象`);
+    if (input.targetType === "research") {
+      payload = { report: payload, userStories: [], features: [] } as ProposalPayload;
+    } else if (input.targetType === "solution") {
+      payload = { doc: payload } as ProposalPayload;
+    } else if (input.targetType === "prd") {
+      payload = { markdown: payload } as ProposalPayload;
+    } else if (input.targetType === "prototype") {
+      payload = { html: payload, structure: null, model: undefined } as ProposalPayload;
+    } else {
+      throw new Error(`createProposal 收到非法 payload 类型：${typeof payload}`);
+    }
+  }
+
   const turn =
     input.conversationTurn ??
     (await getConversationTurn(input.requirementId).catch(() => null)) ??
@@ -251,7 +274,7 @@ export async function createProposal(input: CreateProposalInput): Promise<string
     target_type: input.targetType,
     target_path: input.targetPath ?? null,
     op: input.op,
-    payload: input.payload,
+    payload,
     status: "pending",
     source,
     created_at: new Date().toISOString(),
