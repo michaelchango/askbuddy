@@ -4,11 +4,19 @@ import { useEffect, useRef, useState } from "react";
 import useSWR, { mutate } from "swr";
 import { cn } from "@/lib/utils";
 import { EVT } from "@/lib/events";
-import { ArrowUp, Link2, Plus, User, X, Copy, Check, Loader2 } from "lucide-react";
+import { ArrowUp, Link2, Plus, User, X, Copy, Check, Loader2, ArrowRight, CheckCircle2 } from "lucide-react";
 import { ReferencePanel, type PickedReference } from "./reference-panel";
 import { ProposalCard, type SuggestionView, type RespondData } from "./proposal-card";
+import { useWorkflow } from "@/components/requirements/workflow-context";
 import type { OutputMeta, OutputType } from "@/lib/services/outputs";
 import type { RequirementStatus } from "@/types";
+
+const STEP_COMPLETE_LABEL: Record<string, string> = {
+  dialoguing: "需求确认已完成",
+  research_analysis: "调研分析已生成",
+  design: "方案设计已完成",
+  prd_writing: "需求文档已完成",
+};
 
 interface ChatRef {
   type: string;
@@ -83,6 +91,9 @@ export function ConversationPanel({
   const [busy, setBusy] = useState(false);
   const [focused, setFocused] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 工作流：当后端判定当前阶段产物已完成、可进入下一阶段时，pendingPrompt 非空，
+  // 此时在输入框上方展示"阶段完成确认条"。
+  const workflow = useWorkflow();
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const hasSentRef = useRef(false);
@@ -776,6 +787,33 @@ export function ConversationPanel({
                 setReferences((rs) => rs.filter((x) => x.type !== type))
               }
             />
+          )}
+          {/* 阶段完成确认条：平时隐藏，后端判定可进入下一阶段时显示在输入框上方 */}
+          {workflow?.pendingPrompt && (
+            <div className="flex h-[56px] items-center justify-between gap-3 rounded-t-2xl border-b border-[#1111111a] bg-[#F2F0EB] px-4">
+              <div className="flex min-w-0 items-center gap-2">
+                <CheckCircle2 className="h-[18px] w-[18px] shrink-0 text-[#16a34a]" />
+                <span className="truncate text-[13.5px] font-semibold text-[#1C1917]">
+                  {STEP_COMPLETE_LABEL[workflow.pendingPrompt.step] ?? "当前阶段已完成"}
+                  ，可以进入下一阶段
+                </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={() => workflow.onReturnToModify()}
+                  className="rounded-[9px] border border-[#1111111a] bg-white px-3.5 py-2 text-[13.5px] font-semibold text-[#57534E] hover:bg-[#F5F4F1]"
+                >
+                  返回修改
+                </button>
+                <button
+                  onClick={() => workflow.onProceed()}
+                  className="flex items-center gap-1.5 rounded-[9px] bg-[#f66612] px-3.5 py-2 text-[13.5px] font-semibold text-white hover:bg-[#e85d0a]"
+                >
+                  进入下一阶段
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
           )}
           <textarea
             ref={taRef}

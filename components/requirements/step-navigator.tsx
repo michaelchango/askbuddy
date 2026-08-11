@@ -6,7 +6,6 @@ import {
   Loader2,
   MinusCircle,
   AlertCircle,
-  ArrowRight,
 } from "lucide-react";
 import { useWorkflow } from "@/components/requirements/workflow-context";
 import { STEP_STATE_LABEL } from "@/lib/display";
@@ -132,25 +131,6 @@ export default function StepNavigator({
           </div>
         );
       })}
-
-      {/* 操作区：pendingPrompt 时显示确认闸门双按钮 */}
-      {workflow?.pendingPrompt && (
-        <div className="ml-3 flex shrink-0 items-center gap-2">
-          <button
-            onClick={() => workflow.onReturnToModify()}
-            className="flex items-center gap-1.5 rounded-[9px] border border-[#1111111a] bg-white px-3.5 py-2 text-[13.5px] font-semibold text-[#57534E] hover:bg-[#F5F4F1]"
-          >
-            返回修改
-          </button>
-          <button
-            onClick={() => workflow.onProceed()}
-            className="flex items-center gap-1.5 rounded-[9px] bg-[#f66612] px-3.5 py-2 text-[13.5px] font-semibold text-white hover:bg-[#e85d0a]"
-          >
-            {workflow.pendingPrompt.message || "确认并进入下一阶段"}
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </div>
-      )}
 
       {/* 变更更新任务队列 */}
       {workflow?.changeTasks && workflow.changeTasks.length > 0 && (
