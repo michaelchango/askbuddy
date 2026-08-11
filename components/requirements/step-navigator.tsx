@@ -1,11 +1,9 @@
 "use client";
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 import {
-  CheckCircle2,
-  Circle,
+  Check,
   Loader2,
-  MinusCircle,
-  AlertCircle,
+  AlertTriangle,
 } from "lucide-react";
 import { useWorkflow } from "@/components/requirements/workflow-context";
 import { STEP_STATE_LABEL } from "@/lib/display";
@@ -33,9 +31,9 @@ function stateVisual(state: RequirementStep["state"]) {
       return {
         label: STEP_STATE_LABEL.in_progress,
         color: "#F54900",
-        nodeBg: "#FFF7ED",
-        nodeText: "#F54900",
-        icon: "minus",
+        nodeBg: "#F54900",
+        nodeText: "#FFFFFF",
+        icon: "radio",
       } as const;
     case "pending_update":
       return {
@@ -50,9 +48,9 @@ function stateVisual(state: RequirementStep["state"]) {
       return {
         label: STEP_STATE_LABEL.not_started,
         color: "#78746C",
-        nodeBg: "#F2F0EB",
+        nodeBg: "#C9C5BE",
         nodeText: "#78746C",
-        icon: "circle",
+        icon: "none",
       } as const;
   }
 }
@@ -77,60 +75,67 @@ export default function StepNavigator({
   const generatingStep = workflow?.generatingStep ?? null;
 
   return (
-    <div className="flex items-center justify-between gap-2 rounded-[14px] border border-[#1111111a] bg-white px-5 py-3">
-      {NODES.map((node, index) => {
-        const stepData = stepMap.get(node.key);
-        const state = stepData?.state ?? "not_started";
-        const visual = stateVisual(state);
-        const isGenerating = generatingStep === node.key;
-        const isConnectorDone = state === "done";
+    <div className="flex items-center rounded-[14px] border border-[#1111111a] bg-white px-5 py-3">
+      <div className="flex w-full items-center pl-3">
+        {NODES.map((node, index) => {
+          const stepData = stepMap.get(node.key);
+          const state = stepData?.state ?? "not_started";
+          const visual = stateVisual(state);
+          const isGenerating = generatingStep === node.key;
+          const isConnectorDone = state === "done";
 
-        return (
-          <div key={node.key} className="flex flex-1 items-center">
-            <div className="flex flex-col items-center gap-1.5">
-              <div
-                className="flex h-9 w-9 items-center justify-center rounded-full text-[15px] font-semibold"
-                style={{
-                  backgroundColor: isGenerating ? "#FFF7ED" : visual.nodeBg,
-                  color: isGenerating ? "#F54900" : visual.nodeText,
-                  border: isGenerating
-                    ? "1.5px solid #F54900"
-                    : "1.5px solid transparent",
-                }}
-              >
-                {isGenerating ? (
-                  <Loader2 className="h-[18px] w-[18px] animate-spin" />
-                ) : visual.icon === "check" ? (
-                  <CheckCircle2 className="h-[18px] w-[18px]" />
-                ) : visual.icon === "alert" ? (
-                  <AlertCircle className="h-[18px] w-[18px]" />
-                ) : visual.icon === "minus" ? (
-                  <MinusCircle className="h-[18px] w-[18px]" />
-                ) : (
-                  <Circle className="h-[18px] w-[18px]" />
-                )}
-              </div>
-              <div className="flex flex-col items-center">
-                <span className="text-[13.5px] font-medium text-[#111111]">{node.label}</span>
-                <span className="text-[12px] font-medium" style={{ color: visual.color }}>
-                  {isGenerating ? "生成中…" : visual.label}
-                </span>
-                {node.key === "design" && workflow?.designSubPhase === "prototype" && (
-                  <span className="mt-0.5 rounded-full bg-[#FFF7ED] px-2 py-0.5 text-[11px] font-medium text-[#F54900]">
-                    含原型设计
+          return (
+            <Fragment key={node.key}>
+              <div className="flex shrink-0 items-center gap-2">
+                <div
+                  className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
+                  style={{
+                    backgroundColor: isGenerating ? "#FFF7ED" : visual.nodeBg,
+                    color: isGenerating ? "#F54900" : visual.nodeText,
+                    border: isGenerating
+                      ? "1.5px solid #F54900"
+                      : "1.5px solid transparent",
+                  }}
+                >
+                  {isGenerating ? (
+                    <Loader2 className="h-[15px] w-[15px] animate-spin" />
+                  ) : visual.icon === "check" ? (
+                    <Check className="h-[15px] w-[15px]" />
+                  ) : visual.icon === "alert" ? (
+                    <AlertTriangle className="h-[15px] w-[15px]" />
+                  ) : visual.icon === "radio" ? (
+                    <span className="relative flex h-full w-full items-center justify-center rounded-full">
+                      <span
+                        className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-25"
+                        style={{ backgroundColor: visual.color }}
+                      />
+                      <span
+                        className="relative flex h-2.5 w-2.5 items-center justify-center rounded-full bg-white"
+                      />
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex flex-col items-start">
+                  <span className="text-[14px] font-medium leading-tight text-[#111111]">{node.label}</span>
+                  <span className="text-[13px] font-medium leading-tight" style={{ color: visual.color }}>
+                    {isGenerating ? "生成中…" : visual.label}
                   </span>
-                )}
+                  {node.key === "design" && workflow?.designSubPhase === "prototype" && (
+                    <span className="mt-0.5 rounded-full bg-[#FFF7ED] px-2 py-0.5 text-[11px] font-medium text-[#F54900]">
+                      含原型设计
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-            {index < NODES.length - 1 && (
-              <div
-                className="mx-1 mb-5 h-px flex-1"
-                style={{ backgroundColor: isConnectorDone ? "#008236" : "#E5E2DC" }}
-              />
-            )}
-          </div>
-        );
-      })}
+              {index < NODES.length - 1 && (
+                <div
+                  className="mx-2 h-px flex-1"
+                  style={{ backgroundColor: isConnectorDone ? "#008236" : "#C9C5BE" }}
+                />
+              )}
+            </Fragment>
+          );
+        })}
 
       {/* 变更更新任务队列 */}
       {workflow?.changeTasks && workflow.changeTasks.length > 0 && (
@@ -139,6 +144,7 @@ export default function StepNavigator({
           正在自动更新 {workflow.changeTasks.length} 个输出物…
         </div>
       )}
+      </div>
     </div>
   );
 }
