@@ -64,7 +64,7 @@ export function relativeTime(iso?: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const min = 60e3;
   const hour = 3600e3;
-  const day = 864e4;
+  const day = 864e5; // 一天 = 86,400,000 ms（之前误写成 864e4 = 8,640,000ms = 2.4h，导致「X天前」整体放大 10 倍）
   if (diff < min) return "刚刚";
   if (diff < hour) return `${Math.floor(diff / min)}分钟前`;
   if (diff < day) return `${Math.floor(diff / hour)}小时前`;

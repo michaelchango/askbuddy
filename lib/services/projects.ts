@@ -97,7 +97,7 @@ export async function getProjectStats(projectId: string): Promise<ProjectStats> 
     (r) => r.status !== "completed" && r.status !== "archived"
   ).length;
 
-  const weekAgo = Date.now() - 7 * 864e4;
+  const weekAgo = Date.now() - 7 * 864e5; // 一天 = 864e5 ms（之前误用 864e4，算成 16.8h 而非 7 天）
   const doneThisWeek = requirements.filter(
     (r) => r.status === "completed" && new Date(r.updatedAt).getTime() >= weekAgo
   ).length;
