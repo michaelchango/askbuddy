@@ -789,7 +789,10 @@ export function ConversationPanel({
             />
           )}
           {/* 阶段完成确认条：平时隐藏，后端判定可进入下一阶段时显示在输入框上方 */}
-          {workflow?.pendingPrompt && (
+          {workflow?.pendingPrompt && (() => {
+            // DEBUG-TEMP: 临时诊断 pendingPrompt 来源
+            console.log('[conversation-panel] pendingPrompt render:', workflow.pendingPrompt);
+            return (
             <div className="flex h-[56px] items-center justify-between gap-3 rounded-t-2xl border-b border-[#1111111a] bg-[#F2F0EB] px-4">
               <div className="flex min-w-0 items-center gap-2">
                 <CheckCircle2 className="h-[18px] w-[18px] shrink-0 text-[#16a34a]" />
@@ -814,7 +817,8 @@ export function ConversationPanel({
                 </button>
               </div>
             </div>
-          )}
+            );
+          })()}
           <textarea
             ref={taRef}
             rows={2}

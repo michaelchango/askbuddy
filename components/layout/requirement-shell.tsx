@@ -558,8 +558,10 @@ export function RequirementShell({
       }
       return;
     }
-    // 仅当 promptArg 未传入时清空 state（自动推进路径无 pendingPrompt 可清）
-    if (!promptArg) setPendingPrompt(null);
+    // 进入推进流程后，先收起输入框上方的"可进入下一阶段"按钮。
+    // 失败分支的 catch 块会重新设置 pendingPrompt 提示用户重试，
+    // 此处统一清空，不再区分手动 / 自动触发。
+    setPendingPrompt(null);
     // 离开方案设计步骤时退出原型子阶段
     if (step === "design") setDesignSubPhase(null);
     // 先置当前节点【已完成】并清除确认闸门
@@ -796,6 +798,10 @@ export function RequirementShell({
       if (detail.requirementId !== requirementId) return;
       // auto=true：用户主动发送确认词 → 自动推进，不走按钮渲染
       if (detail.auto) {
+        // 进入推进流程前先清掉对话框上方的旧按钮（即便本轮推进失败，catch 路径也会恢复）。
+        // 旧实现仅在 handleProceed 内部清空，对自动推进路径传入 promptArg 时不生效，
+        // 导致对话里说"好的"后输入框上方的"可进入下一阶段"按钮持续残留。
+        setPendingPrompt(null);
         // 若正在生成中，避免并发重生成：降级为开门等用户点击
         if (generatingStepRef.current) {
           setPendingPrompt({
@@ -858,6 +864,19 @@ export function RequirementShell({
       version: awaiting.outputVersion,
     });
   }, [steps, pendingPrompt, requirementId]);
+
+  // 兜底：若 pendingPrompt 对应的 step 已不在 awaitingConfirm 状态（即已被推进/已关闭闸门），
+  // 强制清空 pendingPrompt，避免「输入框上方按钮残留」。
+  // 注意：只看 awaitingConfirm，不能看 state —— 阶段进行中（in_progress）正是等待确认的常态。
+  useEffect(() => {
+    if (!pendingPrompt || !steps || steps.length === 0) return;
+    const step = pendingPrompt.step;
+    const row = steps.find((s) => s.step === step);
+    if (!row) return;
+    if (!row.awaitingConfirm) {
+      setPendingPrompt(null);
+    }
+  }, [steps, pendingPrompt]);
 
   // ===== 上下文值 =====
   const workflowState: WorkflowState = {
