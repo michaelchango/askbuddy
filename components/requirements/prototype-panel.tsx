@@ -337,7 +337,7 @@ export function PrototypePanel({
               className="flex items-center justify-between rounded border px-3 py-2 text-sm"
             >
               <span>
-                v{v.version} · {v.note || "—"}
+                v{v.version}
                 {currentVersion === v.version ? "（当前）" : ""}
               </span>
               <Button

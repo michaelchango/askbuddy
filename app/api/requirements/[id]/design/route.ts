@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { runGeneration, finalizeStep, proposeStep } from "@/lib/ai/orchestrator";
+import { runGeneration, finalizeStep } from "@/lib/ai/orchestrator";
 import { getSteps, markStepDone, markStepInProgress, setAwaitingConfirm, isFrontierStep } from "@/lib/services/steps";
 import { addMessage } from "@/lib/services/conversations";
 import { touchRequirement } from "@/lib/services/requirements";
@@ -42,37 +42,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           controller.enqueue(encoder.encode(`event: delta\ndata: ${JSON.stringify(full)}\n\n`));
         }
 
-        // M3 · 正常模式走「建议卡」路径（先建议后写库）；变更模式保持直写库。
-        let version: number | undefined = undefined;
-        let suggestionId: string | null = null;
-        let proposalTarget: string | null = null;
-        let proposalPayload: unknown = null;
-        let proposalTurn: number | null = null;
-        let resultType = "";
-        if (mode === "normal") {
-          const result = await proposeStep("solution_writing", params.id, full);
-          suggestionId = result.suggestionId;
-          proposalTarget = result.targetType;
-          proposalPayload = result.payload;
-          proposalTurn = result.conversationTurn;
-          resultType = result.type;
-        } else {
-          const result = await finalizeStep("solution_writing", params.id, full);
-          version = (result.result as { version?: number })?.version;
-          resultType = result.type;
-        }
+        // 生成结果直写库（normal 与 change 统一走 finalizeStep，产物直接落库）
+        const result = await finalizeStep("solution_writing", params.id, full);
+        const version = (result.result as { version?: number })?.version;
+        const resultType = result.type;
 
-        // 将版本号同步写回 requirement_steps.output_version（仅变更模式有版本；正常模式为 null）
+        // 将版本号同步写回 requirement_steps.output_version
         if (version != null) {
           await db.updateWhere("requirement_steps", { requirement_id: params.id, step: "design" }, { output_version: version }).catch(() => {});
         }
 
-        // 生成完成后不再自动推进，当前节点保持【进行中】。
-        // · 正常模式：先下发改建议卡（方案文档），阶段闸门延后到用户决策后再触发（AD-4 叠加）。
-        // · 变更模式：保持既有前沿/上游自动推进语义。
+        // 生成完成后不再自动推进，当前节点保持【进行中】并等待用户确认。
         const genMessage =
           mode === "normal"
-            ? `✅ 方案文档已生成，请在下方建议卡中确认（接受 / 编辑 / 忽略）后再进入原型设计。`
+            ? `✅ 方案文档已生成，请在下方确认后进入原型设计。`
             : `✅ 方案文档已更新。`;
 
         // 落库合成消息，确保退出重进会话后仍能回显
@@ -80,9 +63,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         // 生成（或更新）输出物即视为需求的一次更新，刷新「最近更新」时间
         await touchRequirement(params.id).catch(() => {});
 
-        // 变更模式：判断当前是否为前沿阶段，前沿需重开确认闸门，上游自动完成
+        // 判断当前是否为前沿阶段：前沿需重开确认闸门，上游自动完成。
+        // normal 模式首次推进时所有下游均为未开始，天然为前沿阶段。
         let isFrontier = false;
-        if (mode !== "normal") {
+        if (mode === "normal") {
+          isFrontier = true;
+          await setAwaitingConfirm(params.id, "design", true).catch(() => {});
+        } else {
           const allSteps = await getSteps(params.id);
           isFrontier = isFrontierStep(allSteps, "design");
           if (isFrontier) {
@@ -95,25 +82,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         const steps = await getSteps(params.id);
         controller.enqueue(encoder.encode(`event: step_update\ndata: ${JSON.stringify(steps)}\n\n`));
         controller.enqueue(encoder.encode(`event: gen_message\ndata: ${JSON.stringify({ content: genMessage })}\n\n`));
-        // M3 · 正常模式：下发建议卡（pending），由用户在对话面板逐条决策
-        if (mode === "normal" && suggestionId && proposalTarget) {
-          controller.enqueue(
-            encoder.encode(
-              `event: proposal\ndata: ${JSON.stringify({
-                suggestionId,
-                targetType: proposalTarget,
-                targetPath: null,
-                op: "add",
-                payload: proposalPayload,
-                status: "pending",
-                conversationTurn: proposalTurn,
-                requiresConfirmation: true,
-              })}\n\n`
-            )
-          );
-        }
-        // 下发确认闸门：仅变更模式的前沿阶段下发（正常模式闸门由 respond API 触发）
-        if (mode !== "normal" && isFrontier) {
+        // 下发确认闸门：前沿阶段生成完成后等待用户手动确认
+        if (isFrontier) {
           controller.enqueue(
             encoder.encode(
               `event: proceed_prompt\ndata: ${JSON.stringify({
@@ -121,7 +91,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
                 nextStep: null,
                 subPhase: "prototype",
                 canSkip: false,
-                message: "方案文档已更新，请在上方阶段栏确认。",
+                message:
+                  mode === "normal"
+                    ? "方案文档已生成，请在下方确认后进入原型设计。"
+                    : "方案文档已更新，请在下方确认后进入原型设计。",
                 version,
               })}\n\n`
             )

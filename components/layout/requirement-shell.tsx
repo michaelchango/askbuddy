@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import useSWR, { mutate as globalMutate } from "swr";
-import { ChevronRight, ChevronDown } from "lucide-react";
+import { ChevronRight, ChevronDown, PanelRightOpen } from "lucide-react";
 import {
   UserContext,
   type ShellUser,
@@ -103,6 +103,8 @@ export function RequirementShell({
   const [expanded, setExpanded] = useState(false);
   const [width, setWidth] = useState(460);
   const skipAutoRef = useRef(false);
+  // 记录收起右侧栏前的产物，供窄边"产物"按钮恢复
+  const lastSelectedRef = useRef<{ type: OutputType; subType?: string } | null>(null);
 
   // 生成编排状态
   const [generatingStep, setGeneratingStep] = useState<StepName | null>(null);
@@ -121,8 +123,31 @@ export function RequirementShell({
 
   const handleClose = () => {
     skipAutoRef.current = true;
+    if (selected) lastSelectedRef.current = selected;
     setSelected(null);
     setExpanded(false);
+  };
+
+  // 从窄边"产物"按钮恢复右侧栏：优先恢复收起前查看的产物，否则选最新产物
+  const handleReopen = () => {
+    skipAutoRef.current = true;
+    if (lastSelectedRef.current) {
+      setSelected(lastSelectedRef.current);
+      return;
+    }
+    const existing = outputs.filter((o) => o.exists);
+    if (existing.length > 0) {
+      const pick = existing
+        .slice()
+        .sort((a, b) => {
+          const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+          const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+          return tb - ta;
+        })[0];
+      setSelected({ type: pick.type });
+    } else {
+      setSelected({ type: "card" });
+    }
   };
 
   const handleSelect = (type: OutputType, subType?: string) => {
@@ -159,6 +184,7 @@ export function RequirementShell({
     setSelected(null);
     setExpanded(false);
     skipAutoRef.current = false;
+    lastSelectedRef.current = null;
     setGeneratingStep(null);
     setGenerationContent("");
     setPendingPrompt(null);
@@ -288,11 +314,6 @@ export function RequirementShell({
                   new CustomEvent(EVT.GEN_MESSAGE, { detail: { content: data.content, requirementId } })
                 );
               } catch { /* ignore */ }
-            } else if (eventType === "proposal") {
-              // M3 · 后端生成产物已转为待确认建议卡：通知对话面板即时刷新 pending 列表
-              window.dispatchEvent(
-                new CustomEvent(EVT.PROPOSAL, { detail: { requirementId } })
-              );
             } else if (eventType === "error") {
               // 后端生成流水线异常（如 EMAXCONNSESSION）：中断 SSE 读取，抛错给外层 catch
               let msg = "服务端生成异常";
@@ -489,11 +510,22 @@ export function RequirementShell({
       }
 
       // 发送完成总结消息（含 card 等全部受影响输出物，供总结展示）
+      // 交互原型是方案文档的派生产物：方案受影响且原型已存在时，一并列入总结。
+      // 依赖顺序位于方案文档之后、需求文档之前。
+      const OUTPUT_ORDER = ["card", "research_analysis", "design", "prototype", "prd"];
+      const completeOutputs = [...affectedOutputs].sort(
+        (a, b) => OUTPUT_ORDER.indexOf(a) - OUTPUT_ORDER.indexOf(b)
+      );
+      if (hasPrototypeTask && !completeOutputs.includes("prototype")) {
+        const idx = completeOutputs.indexOf("prd");
+        if (idx >= 0) completeOutputs.splice(idx, 0, "prototype");
+        else completeOutputs.push("prototype");
+      }
       window.dispatchEvent(
         new CustomEvent(EVT.CHANGE_COMPLETE, {
           detail: {
             requirementId,
-            affectedOutputs,
+            affectedOutputs: completeOutputs,
           },
         })
       );
@@ -719,11 +751,6 @@ export function RequirementShell({
               } catch {
                 /* ignore */
               }
-            } else if (eventType === "proposal") {
-              // M3 · 原型正常生成已转为待确认建议卡：通知对话面板即时刷新 pending 列表
-              window.dispatchEvent(
-                new CustomEvent(EVT.PROPOSAL, { detail: { requirementId } })
-              );
             } else if (eventType === "error") {
               // 后端原型流水线异常：中断 SSE 读取，抛错给外层 catch
               let msg = "原型生成异常";
@@ -1074,6 +1101,21 @@ export function RequirementShell({
                   />
                 )}
               </div>
+            )}
+
+            {/* 完全收起时：最右侧窄边「产物」入口 */}
+            {!rightOpen && (
+              <button
+                type="button"
+                onClick={handleReopen}
+                title="展开产物面板"
+                className="flex w-11 shrink-0 border-l border-[#1111111a] bg-white text-[#78746C] transition-colors hover:bg-[#F2F0EB] hover:text-[#f66612]"
+              >
+                <div className="flex w-full flex-col items-center gap-1.5 pt-4">
+                  <PanelRightOpen className="h-5 w-5 shrink-0" />
+                  <span className="w-full text-center text-[13px] font-semibold leading-none">产<br />物</span>
+                </div>
+              </button>
             )}
           </div>
         </div>

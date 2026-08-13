@@ -84,7 +84,7 @@ function MarkdownRendererInner({
   content: string;
   disableMermaid?: boolean;
 }) {
-  // 提取 React 子节点中的纯文本（用于生成 h2 锚点，公式与 proposals.ts splitMarkdownSections 一致）
+  // 提取 React 子节点中的纯文本（用于生成 h2 锚点，与后端章节切分逻辑保持一致）
   const nodeText = (node: React.ReactNode): string => {
     if (node == null) return "";
     if (typeof node === "string" || typeof node === "number") return String(node);

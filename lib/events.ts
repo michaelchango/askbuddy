@@ -19,12 +19,8 @@ export const EVT = {
   PROCEED_PROMPT: "askbuddy:proceed-prompt",
   /** 自动推进生成失败，通知对话面板显示可恢复错误 */
   GEN_ERROR: "askbuddy:gen-error",
-  /** M3 · 建议卡下发（AI 生成产物后，后端经 SSE 推送 pending 建议） */
-  PROPOSAL: "askbuddy:proposal",
-  /** M3 · 定位来源：从产物条目跳回产生它的那轮对话并高亮建议卡 */
+  /** 定位来源：从产物条目跳回产生它的那轮对话并高亮 */
   LOCATE_SOURCE: "askbuddy:locate-source",
-  /** M3 · 建议卡决议后通知输出面板刷新产物（接受/编辑/忽略后右侧即时显示正式内容） */
-  OUTPUT_REFRESH: "askbuddy:output-refresh",
 } as const;
 
 export type EvtName = (typeof EVT)[keyof typeof EVT];

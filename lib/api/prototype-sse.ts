@@ -4,9 +4,7 @@ import { streamPrototype, type StreamPrototypeOpts } from "@/lib/ai/steps/protot
 import { extractPrototype } from "@/lib/ai/parse";
 import { savePrototypeVersion } from "@/lib/services/prototypes";
 import { AI_TASK_MODEL } from "@/lib/ai/models";
-import { getSteps } from "@/lib/services/steps";
-import { createProposal } from "@/lib/services/proposals";
-import { getConversationTurn } from "@/lib/services/conversations";
+import { getSteps, setAwaitingConfirm, nextStepOf } from "@/lib/services/steps";
 import { addMessage } from "@/lib/services/conversations";
 import { touchRequirement } from "@/lib/services/requirements";
 
@@ -39,10 +37,10 @@ export async function prototypeSSE(
         }
 
         // 文案格式与其他文档（设计/PRD/调研）的已更新/已生成一致：
-        // 变更/编辑模式 → 简短"已更新"结尾；首次生成模式 → 提示在建议卡确认后进入下一阶段
+        // 变更/编辑模式 → 简短"已更新"结尾；首次生成模式 → 提示在阶段栏确认后进入下一阶段
         const genMessage = isEdit
           ? "✅ 原型已更新。"
-          : "✅ 原型已生成，请在下方建议卡中确认（接受 / 编辑 / 忽略）后进入需求文档阶段。";
+          : "✅ 原型已生成，请在下方确认后进入下一阶段。";
         await addMessage(requirementId, "assistant", genMessage).catch(() => {});
         // 生成（或更新）原型即视为需求的一次更新，刷新「最近更新」时间
         await touchRequirement(requirementId).catch(() => {});
@@ -59,55 +57,40 @@ export async function prototypeSSE(
           )
         );
 
-        if (isEdit) {
-          // 编辑 / 变更模式：直接落库更新原型（M3 仅对正常生成开启建议卡闸门）
-          const saved = await savePrototypeVersion(
-            requirementId,
-            { html, structure, model: AI_TASK_MODEL[taskType] },
-            opts.baseVersionId
-          );
+        // 生成（或更新）原型直接落库：编辑模式基于 baseVersionId 出新版本
+        const saved = await savePrototypeVersion(
+          requirementId,
+          { html, structure, model: AI_TASK_MODEL[taskType] },
+          opts.baseVersionId
+        );
+
+        // 原型子阶段确认闸门：nextStep 指向 prd_writing，无 subPhase → 确认后标记 design 完成并推进。
+        // 仅 normal 模式下发：变更 / 编辑模式下原型只是"更新已有产物"，
+        // 不应推进流程、也不应重开 design 闸门（否则会把顶部按钮翻成"原型已完成，确认后进入需求文档"，
+        // 点击后又会把已经生成过的需求文档再生成一遍）。design / prd 路由已在各自 change 分支里正确
+        // 区分了前沿 / 上游，此处原型需与之一致。
+        if (!isEdit) {
+          await setAwaitingConfirm(requirementId, "design", true).catch(() => {});
           controller.enqueue(
             encoder.encode(
-              `event: done\ndata: ${JSON.stringify({
-                version: saved.version,
-                structure: saved.structure,
-              })}\n\n`
-            )
-          );
-        } else {
-          // M3 · 正常生成：先下发改建议卡（原型），阶段闸门延后到用户决策后再触发（AD-4 叠加）
-          const proposalTurn = await getConversationTurn(requirementId).catch(() => null);
-          const suggestionId = await createProposal({
-            requirementId,
-            targetType: "prototype",
-            targetPath: null,
-            op: "add",
-            payload: { html, structure, model: AI_TASK_MODEL[taskType] },
-            conversationTurn: proposalTurn ?? undefined,
-          });
-          controller.enqueue(
-            encoder.encode(
-              `event: proposal\ndata: ${JSON.stringify({
-                suggestionId,
-                targetType: "prototype",
-                targetPath: null,
-                op: "add",
-                payload: { html, structure, model: AI_TASK_MODEL[taskType] },
-                status: "pending",
-                conversationTurn: proposalTurn,
-                requiresConfirmation: true,
-              })}\n\n`
-            )
-          );
-          controller.enqueue(
-            encoder.encode(
-              `event: done\ndata: ${JSON.stringify({
-                version: null,
-                structure,
+              `event: proceed_prompt\ndata: ${JSON.stringify({
+                step: "design",
+                nextStep: nextStepOf("design"),
+                canSkip: false,
+                message: "原型已就绪，确认后进入需求文档阶段。",
               })}\n\n`
             )
           );
         }
+
+        controller.enqueue(
+          encoder.encode(
+            `event: done\ndata: ${JSON.stringify({
+              version: saved.version,
+              structure: saved.structure,
+            })}\n\n`
+          )
+        );
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
         controller.enqueue(

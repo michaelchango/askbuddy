@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import useSWR, { mutate } from "swr";
 import { cn } from "@/lib/utils";
 import { EVT } from "@/lib/events";
-import { ArrowUp, Link2, Plus, User, X, Copy, Check, Loader2, ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowUp, Link2, Plus, User, X, Copy, Check, ArrowRight, CheckCircle2 } from "lucide-react";
 import { ReferencePanel, type PickedReference } from "./reference-panel";
-import { ProposalCard, type SuggestionView, type RespondData } from "./proposal-card";
 import { useWorkflow } from "@/components/requirements/workflow-context";
 import type { OutputMeta, OutputType } from "@/lib/services/outputs";
 import type { RequirementStatus } from "@/types";
+import { reorderForDisplay } from "@/lib/services/conversation-order";
 
 const STEP_COMPLETE_LABEL: Record<string, string> = {
   dialoguing: "需求确认已完成",
@@ -32,10 +32,21 @@ function fmtTime(iso: string): string {
   return `${hh}:${mm}`;
 }
 
-// 文本框随内容自动增高（换行抬高）
+// 输入框自动增高：默认一行(min-h-[40px])，最多撑到 MAX_INPUT_ROWS 行，超出后内部滚动
+const INPUT_LINE_H = 24; // leading-6 行高
+const INPUT_PAD_Y = 16; // pt-3(12) + 底部余量(4)
+const MAX_INPUT_ROWS = 6;
+const MAX_INPUT_H = MAX_INPUT_ROWS * INPUT_LINE_H + INPUT_PAD_Y; // 160px
+
 function autoGrow(el: HTMLTextAreaElement) {
   el.style.height = "auto";
-  el.style.height = el.scrollHeight + "px";
+  if (el.scrollHeight > MAX_INPUT_H) {
+    el.style.height = MAX_INPUT_H + "px";
+    el.style.overflowY = "auto";
+  } else {
+    el.style.height = el.scrollHeight + "px";
+    el.style.overflowY = "hidden";
+  }
 }
 
 interface Msg {
@@ -75,15 +86,6 @@ export function ConversationPanel({
     { revalidateOnFocus: false, revalidateOnReconnect: false }
   );
   const existingOutputs = (outputs ?? []).filter((o) => o.exists);
-
-  // M3 · 待确认建议卡（条目级 HITL）。生成产物后由后端写入 suggestions(pending)，
-  // 此处拉取 pending 列表渲染；响应后即时刷新。accept/edit/ignore 后该条从列表中移除。
-  const { data: proposals, mutate: mutateProposals } = useSWR<SuggestionView[]>(
-    rid ? `/api/requirements/${rid}/proposals?status=pending` : null,
-    (u: string) => fetch(u).then((r) => r.json()).then((j) => j.data ?? []),
-    { revalidateOnFocus: false, revalidateOnReconnect: false }
-  );
-  const [bulkBusy, setBulkBusy] = useState(false);
 
   const [messages, setMessages] = useState<Msg[]>([]);
   const [draft, setDraft] = useState("");
@@ -131,7 +133,14 @@ export function ConversationPanel({
   const [refOpen, setRefOpen] = useState(false);
 
   useEffect(() => {
-    if (data && messages.length === 0 && !hasSentRef.current) setMessages(data);
+    if (data && messages.length === 0 && !hasSentRef.current) {
+      // 兜底排序：旧 conversation/route.ts 在 SSE 早期写入了「✅ 变更已处理完成」
+      // summary 消息，导致这条 summary 在 DB 里出现在「调研分析/方案文档/... 已更新」
+      // 之前。虽然后续重建已迁移落库时机，但 DB 里仍残留历史数据，刷新页面/退出重进
+      // 后会看到错位。这里在 UI 层做一次纯函数重排，把 summary 提升到所属变更批次最后。
+      // 注意：不影响 id/created_at 字段，仅调整数组展示位置，对话跳转 data-turn 也保持稳定。
+      setMessages(reorderForDisplay(data as Msg[]));
+    }
   }, [data, messages.length]);
 
   useEffect(() => {
@@ -341,9 +350,6 @@ export function ConversationPanel({
                 );
               } catch { /* ignore */ }
             }
-          } else if (event === "proposal") {
-            // M3 · AI 生成产物 → 新建议卡到达，即时刷新 pending 列表（无需等待轮询）
-            if (currentId) mutateProposals();
           } else if (event === "change_update") {
             // AI 检测到变更点 → 通知 shell 自动执行变更更新队列
             if (currentId) {
@@ -442,42 +448,80 @@ export function ConversationPanel({
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { defaultText: string };
       setText(detail.defaultText ?? "");
-      // 延迟聚焦，确保输入框已更新
-      setTimeout(() => taRef.current?.focus(), 0);
+      // 延迟聚焦并重新计算高度，确保长文案填入后正确撑高
+      setTimeout(() => {
+        if (taRef.current) {
+          taRef.current.focus();
+          autoGrow(taRef.current);
+        }
+      }, 0);
     };
     window.addEventListener(EVT.REQUEST_MODIFY, handler);
     return () => window.removeEventListener(EVT.REQUEST_MODIFY, handler);
   }, []);
 
-  // 监听变更全部完成事件 → 添加总结消息
+  // 监听变更全部完成事件 → 落库总结消息（替代 conversation/route.ts 内早期 addMessage）。
+  //
+  // 关键时序：原「变更已处理完成」总结写在 SSE change_update 之后、四路重生成启动之前，
+  // 顺序上早于「调研分析/方案文档/... 已更新」入库，导致刷新页面/退出重进后
+  // 总结跑到具体更新之前看起来很乱。现改为：等所有重生成完成 → EVT.CHANGE_COMPLETE
+  // 触发 → 由前端调 `/api/requirements/[id]/conversation/summary` 落库，并复用
+  // 返回值（或本地兜底）追加到对话。
   useEffect(() => {
-    const handler = (e: Event) => {
+    const handler = async (e: Event) => {
       const detail = (e as CustomEvent).detail as {
         requirementId: string;
         affectedOutputs: string[];
       };
-      if (detail.requirementId !== rid) return;
-      const labels: Record<string, string> = {
-        card: "需求卡片",
-        research_analysis: "调研分析",
-        design: "方案设计",
-        prd: "需求文档",
-        prd_writing: "需求文档",
-      };
-      const updatedList = detail.affectedOutputs
-        .map((s) => labels[s] ?? s)
-        .join("、");
-      const summary = `✅ 变更已全部完成！已更新：${updatedList}。你可以在左侧边栏查看最新内容。`;
+      if (!rid || detail.requirementId !== rid) return;
+      if (!Array.isArray(detail.affectedOutputs) || detail.affectedOutputs.length === 0) return;
+
+      let content: string | null = null;
+      try {
+        // 1) 先让后端把总结写到 DB（4 路重生成都已落库后才调，因此 DB id 一定晚于所有
+        //    「X已更新」消息——保证 listConversations 按 id ASC 回显顺序正确）。
+        const r = await fetch(`/api/requirements/${rid}/conversation/summary`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ affectedOutputs: detail.affectedOutputs }),
+        });
+        const j = (await r.json()) as
+          | { ok?: boolean; data?: { content?: string | null } }
+          | undefined;
+        if (j?.ok && typeof j.data?.content === "string" && j.data.content) {
+          content = j.data.content;
+        }
+      } catch {
+        // 网络/服务异常时不阻塞展示，走下方兜底逻辑。
+      }
+      if (!content) {
+        // 兜底文本与原 conversation/route.ts 中写入的「变更已处理完成」模板保持一致，
+        // 仅本次会话可见；下次刷新会因后端未持久化而消失，但不会再次错位。
+        const labels: Record<string, string> = {
+          card: "需求卡片",
+          research_analysis: "调研报告",
+          design: "方案文档",
+          prototype: "交互原型",
+          prd: "需求文档",
+          prd_writing: "需求文档",
+        };
+        const ORDER = ["card", "research_analysis", "design", "prototype", "prd"];
+        const sorted = [...detail.affectedOutputs].sort(
+          (a, b) => ORDER.indexOf(a) - ORDER.indexOf(b)
+        );
+        const updatedList = sorted.map((s) => labels[s] ?? s).join("、");
+        content = `✅ 变更已处理完成，涉及 ${updatedList}。如需进一步调整请继续描述。`;
+      }
       setMessages((m) => {
         // 防御性去重：同一条变更总结若已被追加（重复派发），不重复追加
         const last = m[m.length - 1];
-        if (last && last.role === "assistant" && last.content === summary) return m;
+        if (last && last.role === "assistant" && last.content === content) return m;
         return [
           ...m,
           {
             id: nextMsgId(),
             role: "assistant",
-            content: summary,
+            content,
             created_at: new Date().toISOString(),
           },
         ];
@@ -507,66 +551,11 @@ export function ConversationPanel({
     return () => window.removeEventListener(EVT.GEN_ERROR, handler);
   }, [rid]);
 
-  // M3 · 单条建议决策后的处理：刷新列表 + 刷新产物 + 阶段闸门（若全部解决）
-  function handleProposalResolved(data: RespondData) {
-    mutateProposals();
-    if (rid) {
-      // 通知输出面板立即刷新（SWR 精确 key 匹配，用事件比 mutate 前缀更可靠）
-      window.dispatchEvent(
-        new CustomEvent(EVT.OUTPUT_REFRESH, { detail: { requirementId: rid } })
-      );
-    }
-    if (data.proceedPrompt) {
-      window.dispatchEvent(
-        new CustomEvent(EVT.PROCEED_PROMPT, {
-          detail: { requirementId: rid, ...data.proceedPrompt },
-        })
-      );
-    }
-  }
-
-  // M3 · 全部接受（R7 缓解）：一次性 accept 所有 pending 建议
-  async function bulkAcceptAll() {
-    if (!rid) return;
-    setBulkBusy(true);
-    try {
-      const res = await fetch(`/api/requirements/${rid}/proposals/bulk-accept`, {
-        method: "POST",
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || "批量接受失败");
-      mutateProposals();
-      if (rid) {
-        window.dispatchEvent(
-          new CustomEvent(EVT.OUTPUT_REFRESH, { detail: { requirementId: rid } })
-        );
-      }
-      for (const p of json.data?.proceedPrompts ?? []) {
-        window.dispatchEvent(
-          new CustomEvent(EVT.PROCEED_PROMPT, { detail: { requirementId: rid, ...p } })
-        );
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "批量接受失败");
-    } finally {
-      setBulkBusy(false);
-    }
-  }
-
-  // M3 · 定位来源：从产物条目跳回对应建议卡并高亮（验收红线交互落点）
+  // 定位来源：从产物条目跳回产生该产物的对话轮次并高亮（对话回溯）
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { suggestionId?: string; conversationTurn?: number };
+      const detail = (e as CustomEvent).detail as { conversationTurn?: number };
       if (!scrollRef.current) return;
-      if (detail.suggestionId) {
-        const el = scrollRef.current.querySelector(`[data-proposal-id="${detail.suggestionId}"]`);
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-          el.classList.add("ring-2", "ring-brand", "ring-offset-2");
-          setTimeout(() => el.classList.remove("ring-2", "ring-brand", "ring-offset-2"), 2200);
-          return;
-        }
-      }
       if (detail.conversationTurn != null) {
         const el = scrollRef.current.querySelector(`[data-turn="${detail.conversationTurn}"]`);
         if (el) {
@@ -576,24 +565,12 @@ export function ConversationPanel({
           return;
         }
       }
-      // 无对应元素（如建议已被决策移除）→ 滚动到底部
+      // 无对应元素（如对话已被移除）→ 滚动到底部
       scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
     };
     window.addEventListener(EVT.LOCATE_SOURCE, handler);
     return () => window.removeEventListener(EVT.LOCATE_SOURCE, handler);
   }, []);
-
-  // M3 · 监听全局 proposal 事件：生成 SSE 由 requirement-shell 转发，
-  // 后端把产物转为 pending 建议卡后即时刷新对话面板的建议列表。
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { requirementId?: string };
-      if (detail.requirementId !== rid) return;
-      mutateProposals();
-    };
-    window.addEventListener(EVT.PROPOSAL, handler);
-    return () => window.removeEventListener(EVT.PROPOSAL, handler);
-  }, [rid, mutateProposals]);
 
   // 卸载时清理可恢复错误的自动消失计时器，避免对已卸载组件 setState
   useEffect(() => {
@@ -696,33 +673,6 @@ export function ConversationPanel({
           </div>
         )}
 
-        {/* M3 · 待确认建议卡列表（条目级 HITL 入口） */}
-        {proposals && proposals.length > 0 && (
-          <div className="space-y-2 pt-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-medium text-slate-400">
-                {proposals.length} 条待确认建议
-              </span>
-              <button
-                type="button"
-                disabled={bulkBusy}
-                onClick={bulkAcceptAll}
-                className="flex items-center gap-1 rounded-md bg-brand px-2.5 py-1 text-[12px] font-medium text-white transition-colors hover:bg-[#e2570c] disabled:opacity-50"
-              >
-                {bulkBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                全部接受
-              </button>
-            </div>
-            {proposals.map((s) => (
-              <ProposalCard
-                key={s.id}
-                requirementId={rid as string}
-                suggestion={s}
-                onResolved={handleProposalResolved}
-              />
-            ))}
-          </div>
-        )}
       </div>
 
       <div className="relative mt-0 border-t border-[#1111111a] px-6 pb-[18px] pt-[18px]">
@@ -770,7 +720,7 @@ export function ConversationPanel({
           />
         )}
 
-        {/* 输入框药丸：上=输入区，下=功能区(加号常驻左 / 发送常驻右)；默认两行，换行自动抬高 */}
+        {/* 输入框药丸：上=输入区，下=功能区(加号常驻左 / 发送常驻右)；默认一行，最多 6 行，超出后内部滚动 */}
         <div
           className={cn(
             "relative flex flex-col rounded-2xl border bg-[#F2F0EB] transition-colors",
@@ -789,16 +739,13 @@ export function ConversationPanel({
             />
           )}
           {/* 阶段完成确认条：平时隐藏，后端判定可进入下一阶段时显示在输入框上方 */}
-          {workflow?.pendingPrompt && (() => {
-            // DEBUG-TEMP: 临时诊断 pendingPrompt 来源
-            console.log('[conversation-panel] pendingPrompt render:', workflow.pendingPrompt);
-            return (
+          {workflow?.pendingPrompt && (
             <div className="flex h-[56px] items-center justify-between gap-3 rounded-t-2xl border-b border-[#1111111a] bg-[#F2F0EB] px-4">
               <div className="flex min-w-0 items-center gap-2">
                 <CheckCircle2 className="h-[18px] w-[18px] shrink-0 text-[#16a34a]" />
                 <span className="truncate text-[13.5px] font-semibold text-[#1C1917]">
-                  {STEP_COMPLETE_LABEL[workflow.pendingPrompt.step] ?? "当前阶段已完成"}
-                  ，可以进入下一阶段
+                  {workflow.pendingPrompt.message ||
+                    `${STEP_COMPLETE_LABEL[workflow.pendingPrompt.step] ?? "当前阶段已完成"}，可以进入下一阶段`}
                 </span>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -817,11 +764,10 @@ export function ConversationPanel({
                 </button>
               </div>
             </div>
-            );
-          })()}
+          )}
           <textarea
             ref={taRef}
-            rows={2}
+            rows={1}
             value={text}
             placeholder="描述你的需求想法，Enter 发送 / Shift+Enter 换行"
             onFocus={() => setFocused(true)}
@@ -836,7 +782,7 @@ export function ConversationPanel({
                 send();
               }
             }}
-            className="min-h-[64px] w-full resize-none bg-transparent px-4 pt-3 text-[15.75px] leading-6 text-[#111111] outline-none placeholder:text-[#78746C] transition-[height] duration-200 ease-out"
+            className="min-h-[40px] w-full resize-none overflow-y-hidden bg-transparent px-4 pt-3 text-[15.75px] leading-6 text-[#111111] outline-none placeholder:text-[#78746C] transition-[height] duration-200 ease-out"
           />
           <div className="flex items-center justify-between px-2 pb-2">
             {rid ? (

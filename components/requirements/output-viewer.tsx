@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Download, ArrowLeft, PanelRightClose, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Download, PanelRightClose, Loader2 } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { extractResearchAnalysis } from "@/lib/ai/parse";
 import { buildResearchAnalysisMarkdown } from "@/lib/render/research-analysis";
@@ -10,7 +10,6 @@ import MarkdownRenderer from "./markdown-renderer";
 import { ICONS } from "./output-sidebar";
 import { EVT } from "@/lib/events";
 import type { OutputContent, OutputType } from "@/lib/services/outputs";
-import type { SuggestionView } from "./proposal-card";
 
 // outputType/subType → doc_sections 的 target_type（章节级溯源用）
 function docSectionTarget(outputType: OutputType, subType?: string): string | null {
@@ -18,38 +17,6 @@ function docSectionTarget(outputType: OutputType, subType?: string): string | nu
   if (outputType === "design") return subType === "solution" ? "solution" : null;
   if (outputType === "prd") return "prd";
   return null;
-}
-
-// outputType/subType → proposals 的 target_type（待确认建议预览用）
-function proposalTargetFromOutput(outputType: OutputType, subType?: string): SuggestionView["target_type"] | null {
-  if (outputType === "research_analysis") return "research";
-  if (outputType === "design") {
-    if (subType === "solution") return "solution";
-    if (subType === "prototype") return "prototype";
-    return null;
-  }
-  if (outputType === "prd") return "prd";
-  return null;
-}
-
-// 从建议 payload 中提取可预览的文本/markdown/html
-function proposalPreviewContent(
-  targetType: SuggestionView["target_type"],
-  payload: SuggestionView["payload"]
-): { kind: "markdown"; content: string } | { kind: "html"; content: string } | null {
-  if (targetType === "prototype") {
-    const html = typeof payload.html === "string" ? payload.html : "";
-    return { kind: "html", content: html };
-  }
-  let content = "";
-  if (targetType === "research") {
-    content = typeof payload.report === "string" ? payload.report : "";
-  } else if (targetType === "solution") {
-    content = typeof payload.doc === "string" ? payload.doc : "";
-  } else if (targetType === "prd") {
-    content = typeof payload.markdown === "string" ? payload.markdown : "";
-  }
-  return content ? { kind: "markdown", content } : null;
 }
 
 // 原 components/requirements/markdown.tsx 只是给 MarkdownRenderer 套一层排版容器，
@@ -137,40 +104,7 @@ export function OutputViewer({
     { revalidateOnFocus: false }
   );
 
-  // M3 · 待确认建议预览：正常生成后产物先写 suggestions，右侧显示建议 payload 供预览
-  const proposalTarget = proposalTargetFromOutput(outputType, subType);
-  const { data: pendingProposals, mutate: refreshProposals } = useSWR<SuggestionView[]>(
-    proposalTarget && !generating
-      ? `/api/requirements/${requirementId}/proposals?status=pending`
-      : null,
-    (u: string) => fetch(u).then((r) => r.json()).then((j) => j.data ?? []),
-    { revalidateOnFocus: false }
-  );
-  const previewProposal = useMemo(() => {
-    return pendingProposals?.find((p) => p.target_type === proposalTarget) ?? null;
-  }, [pendingProposals, proposalTarget]);
-  const preview = useMemo(() => {
-    if (!proposalTarget || !previewProposal) return null;
-    return proposalPreviewContent(proposalTarget, previewProposal.payload);
-  }, [proposalTarget, previewProposal]);
-
-  // 监听生成完成/建议决议事件，刷新建议列表与正式产物
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { requirementId?: string } | undefined;
-      if (detail?.requirementId !== requirementId) return;
-      refreshProposals();
-      refreshOutput();
-    };
-    window.addEventListener(EVT.PROPOSAL, handler);
-    window.addEventListener(EVT.OUTPUT_REFRESH, handler);
-    return () => {
-      window.removeEventListener(EVT.PROPOSAL, handler);
-      window.removeEventListener(EVT.OUTPUT_REFRESH, handler);
-    };
-  }, [requirementId, refreshProposals, refreshOutput]);
-
-  // M3 · 点来源 chip → 跳回产生该章节的对话轮次（验收红线交互）
+  // 点来源 chip → 跳回产生该章节的对话轮次（验收红线交互）
   function locateSource(conversationTurn?: number | null) {
     if (conversationTurn == null) return;
     window.dispatchEvent(
@@ -275,7 +209,7 @@ export function OutputViewer({
 
   return (
     <div className="flex h-full flex-col bg-white">
-      {/* 顶栏：左=收起+标题，中=返回对话(仅展开态)，右=展开/下载 */}
+      {/* 顶栏：左=收起+标题，中=版本号，右=展开/下载 */}
       <div className="grid h-[52px] shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-[#1111111a] bg-white px-3">
         {/* 左：收起按钮 + 标题(带 icon) + 版本徽标 + 版本切换 */}
         <div className="flex min-w-0 items-center gap-1.5">
@@ -293,7 +227,7 @@ export function OutputViewer({
           </span>
         </div>
 
-        {/* 中：版本号(居中) + 返回对话(仅展开态)，版本号多版本/单版本位置一致且不挤压标题 */}
+        {/* 中：版本号(居中)，多版本/单版本位置一致且不挤压标题 */}
         <div className="flex items-center justify-center gap-2">
           {current != null && versions.length > 1 ? (
             <div className="flex shrink-0 items-center gap-1">
@@ -312,7 +246,7 @@ export function OutputViewer({
               >
                 {versions.map((v) => (
                   <option key={v.version} value={v.version}>
-                    v{v.version}{v.note ? ` - ${v.note}` : ""}
+                    v{v.version}
                   </option>
                 ))}
               </select>
@@ -330,14 +264,6 @@ export function OutputViewer({
               v{current}
             </span>
           ) : null}
-          {expanded && (
-            <button
-              onClick={onClose}
-              className="flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-[13px] font-medium text-white shadow-sm transition-colors hover:bg-[#e2570c]"
-            >
-              <ArrowLeft className="h-4 w-4" /> 返回对话
-            </button>
-          )}
         </div>
 
         {/* 右：展开 / 下载（顺序已互换） */}
@@ -406,31 +332,17 @@ export function OutputViewer({
               </div>
             )}
             {data.contentType === "html" && (
-              <>
-                {!data.content && preview?.kind === "html" && (
-                  <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-[13px] text-amber-700 ring-1 ring-amber-200">
-                    当前为 AI 建议预览，点击下方建议卡「接受」后才会正式保存到该阶段产物。
-                  </div>
-                )}
-                <iframe
-                  title="preview"
-                  sandbox="allow-scripts allow-forms allow-popups allow-modals"
-                  className="h-full min-h-[520px] w-full rounded-lg border border-slate-200 bg-white"
-                  srcDoc={data.content ?? preview?.content ?? ""}
-                />
-              </>
+              <iframe
+                title="preview"
+                sandbox="allow-scripts allow-forms allow-popups allow-modals"
+                className="h-full min-h-[520px] w-full rounded-lg border border-slate-200 bg-white"
+                srcDoc={data.content ?? ""}
+              />
             )}
             {data.contentType === "markdown" && (
               <div className="mx-auto max-w-3xl rounded-lg border border-slate-200 bg-white p-6">
                 {data.content ? (
                   <Markdown content={data.content} />
-                ) : preview?.kind === "markdown" ? (
-                  <>
-                    <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-[13px] text-amber-700 ring-1 ring-amber-200">
-                      当前为 AI 建议预览，点击下方建议卡「接受」后才会正式保存到该阶段产物。
-                    </div>
-                    <Markdown content={preview.content} />
-                  </>
                 ) : (
                   <div className="text-sm text-slate-400">暂无内容</div>
                 )}
@@ -461,24 +373,6 @@ export function OutputViewer({
           </>
         )}
 
-        {/* 非生成态：API 无数据但有待确认建议 → 也显示预览（兼容某些输出端点返回空的情况） */}
-        {!generating && !isLoading && !data && preview && (
-          <div className="mx-auto max-w-3xl rounded-lg border border-slate-200 bg-white p-6">
-            <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-[13px] text-amber-700 ring-1 ring-amber-200">
-              当前为 AI 建议预览，点击下方建议卡「接受」后才会正式保存到该阶段产物。
-            </div>
-            {preview.kind === "html" ? (
-              <iframe
-                title="preview"
-                sandbox="allow-scripts allow-forms allow-popups allow-modals"
-                className="h-full min-h-[520px] w-full rounded-lg border border-slate-200 bg-white"
-                srcDoc={preview.content}
-              />
-            ) : (
-              <Markdown content={preview.content} />
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

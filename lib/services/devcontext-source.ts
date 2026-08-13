@@ -4,9 +4,8 @@
 // 避免把 @cloudbase/node-sdk 拖进浏览器打包（devcontext-panel 仅用 firstSourceTurn）。
 import type { DevContext } from "@/lib/schemas/devcontext";
 
-// M3 · 递归填充 DevContext 条目的 _source.conversation_turn（分级溯源 + 验收红线回溯）。
-// 仅对「已带 _source 但 conversation_turn 缺失」的条目补填，不覆盖模型已填值；
-// decision_id 由 proposals.respondProposal 在 DevContext 走建议卡路径时回填（M3 暂以 conversation_turn 承载回溯）。
+// 递归填充 DevContext 条目的 _source.conversation_turn（分级溯源 + 验收红线回溯）。
+// 仅对「已带 _source 但 conversation_turn 缺失」的条目补填，不覆盖模型已填值。
 export function injectConversationTurn(node: unknown, turn: number): void {
   if (Array.isArray(node)) {
     node.forEach((n) => injectConversationTurn(n, turn));

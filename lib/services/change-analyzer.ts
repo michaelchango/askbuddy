@@ -16,15 +16,18 @@ export interface ChangeAnalysis {
   summary: string;
 }
 
+// 生成物名称（区别于阶段名称：调研报告≠调研分析、方案文档≠方案设计）
 const OUTPUT_LABELS: Record<string, string> = {
   card: "需求卡片",
-  research_analysis: "调研分析",
-  design: "方案设计",
-  prd: "需求文档（PRD）",
+  research_analysis: "调研报告",
+  design: "方案文档",
+  prototype: "交互原型",
+  prd: "需求文档",
 };
 
-// 依赖顺序（上游 → 下游），级联判定与结果排序都以此为准
-const DEP_ORDER = ["card", "research_analysis", "design", "prd"];
+// 依赖顺序（上游 → 下游），级联判定与结果排序都以此为准。
+// 交互原型是方案文档的派生物，位于方案文档之后、需求文档之前。
+const DEP_ORDER = ["card", "research_analysis", "design", "prototype", "prd"];
 
 // 加载候选输出物的真实内容（截断保护），供 AI 做内容级比对
 async function loadCandidateContents(
@@ -58,6 +61,12 @@ async function loadCandidateContents(
     if (doc) contents["design"] = doc.slice(0, 4000);
   }
 
+  if (candidates.includes("prototype")) {
+    const proto = await db.get("prototypes", requirementId, "requirement_id");
+    const html = (proto as Record<string, unknown> | undefined)?.html as string | undefined;
+    if (html) contents["prototype"] = html.slice(0, 3000);
+  }
+
   if (candidates.includes("prd")) {
     const prd = await db.get("prds", requirementId, "requirement_id");
     const markdown = (prd as Record<string, unknown> | undefined)?.markdown as
@@ -88,6 +97,19 @@ export async function analyzeChanges(
     (c) => DEP_ORDER.includes(c)
   );
 
+  // 交互原型是方案文档的派生物：方案文档在候选窗口内且原型已生成时，将其补入候选窗口
+  // （依赖顺序位于方案文档之后、需求文档之前），使 AI 的比对与 summary 能覆盖原型。
+  if (candidates.includes("design") && !candidates.includes("prototype")) {
+    const proto = await db
+      .get<{ current_version?: number }>("prototypes", requirementId, "requirement_id")
+      .catch(() => null);
+    if (proto && (proto.current_version ?? 0) > 0) {
+      const idx = candidates.indexOf("prd");
+      if (idx >= 0) candidates.splice(idx, 0, "prototype");
+      else candidates.push("prototype");
+    }
+  }
+
   // 加载候选输出物的真实内容，AI 依据内容判断"变更是否涉及该文档"
   const contents = await loadCandidateContents(requirementId, candidates, card);
 
@@ -106,7 +128,8 @@ export async function analyzeChanges(
 
   const systemPrompt = `你是 AskBuddy 的产品经理 AI 助手。用户提出了一个修改请求，你的任务是把变更内容与所有【已生成输出物】的真实内容逐一比对，判断这个变更会影响哪些输出物。
 
-输出物依赖顺序（上游 → 下游）：card（需求卡片）→ research_analysis（调研分析）→ design（方案设计）→ prd（需求文档）。
+输出物依赖顺序（上游 → 下游）：card（需求卡片）→ research_analysis（调研报告）→ design（方案文档）→ prototype（交互原型）→ prd（需求文档）。
+其中 prototype（交互原型）是 design（方案文档）的派生生成物，不单独产生变更：它随方案文档联动更新。
 
 本次可参与判定的输出物（候选窗口）只有：${candidateList}。
 未列入候选窗口的输出物尚未生成，一律不得出现在结果中。
@@ -117,7 +140,7 @@ export async function analyzeChanges(
 2. 【逐文档内容比对】：对候选窗口中的每个输出物，结合其真实内容判断变更是否涉及它——
    变更点在该文档中有对应内容需要改写，或该文档缺失了变更后应包含的内容，即视为受影响。
 3. 【正向级联】：若某个上游输出物受影响（内容需要修改），则它在候选窗口内的所有下游输出物通常也受影响，需一并列出。
-   例：新增一个功能 → card 的 scope 变 → research_analysis 的功能清单变 → design 变 → prd 变（以候选窗口为界，全部列出）。
+   例：新增一个功能 → card 的 scope 变 → research_analysis 的功能清单变 → design 变 → prototype（交互原型，若已生成则随方案联动）变 → prd 变（以候选窗口为界，全部列出）。
 4. 【反向克制】：若变更仅发生在某个下游文档的局部细节，且该细节在上游文档中本来就未涉及、也不与上游内容矛盾，则上游【不受影响】，不要向上牵连。
    例：在方案阶段调整一个卡片与调研均未提及的技术实现细节 → 只标 design（及候选窗口内已生成的 prd），不标 card、research_analysis。
 5. 【不越窗口】：affectedOutputs 必须是候选窗口的子集，绝不列出未生成的输出物。
@@ -125,7 +148,7 @@ export async function analyzeChanges(
 输出格式：只输出一个 JSON 代码块，包含以下字段：
 - affectedOutputs: string[] — 受影响的输出物类型数组（按依赖顺序排列）
 - changes: Array<{output: string, field: string, description: string}> — 每个受影响输出物的具体变更点（description 要具体说明"该文档需要改什么"，将作为重新生成时的修改指令）
-- summary: string — 变更的自然语言总结（一段话，说明改了什么、波及哪些文档、哪些文档未涉及无需更新）
+- summary: string — 变更总结。用 1~2 句话简洁表达：本次变更改了 XX（如"新增了XX功能"）→ 需要同步更新哪些生成物（用中文名）的哪些部分（如"需求卡片的功能范围、调研报告的功能清单、方案文档的交互设计"）。summary 必须完整覆盖 affectedOutputs 中出现的全部生成物（含"交互原型"，如"…方案文档、交互原型…"），不得遗漏。不要出现"候选窗口""不越窗口""未生成输出物"等内部术语，不要超过 100 字。
 
 示例输出格式：
 \`\`\`json
@@ -135,7 +158,7 @@ export async function analyzeChanges(
     {"output": "card", "field": "scope", "description": "功能范围新增XX功能"},
     {"output": "research_analysis", "field": "features", "description": "功能清单需补充XX功能条目及优先级"}
   ],
-  "summary": "本次变更新增了XX功能，需要同步更新需求卡片的功能范围和调研分析的功能清单。"
+  "summary": "新增了XX功能，需同步更新需求卡片的功能范围、调研报告的功能清单。"
 }
 \`\`\`
 

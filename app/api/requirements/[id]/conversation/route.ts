@@ -63,12 +63,18 @@ const STAGE_LABELS: Record<string, string> = {
   prd_writing: "需求文档",
 };
 
+// 生成物名称（区别于阶段名称：调研报告≠调研分析、方案文档≠方案设计）
 const OUTPUT_LABELS: Record<string, string> = {
   card: "需求卡片",
-  research_analysis: "调研分析",
-  design: "方案设计",
+  research_analysis: "调研报告",
+  design: "方案文档",
+  prototype: "交互原型",
   prd: "需求文档",
 };
+
+// 生成物依赖顺序（上游 → 下游），用于受影响清单排序；
+// 交互原型是方案文档的派生物，位于方案文档之后、需求文档之前。
+const OUTPUT_DEP_ORDER = ["card", "research_analysis", "design", "prototype", "prd"];
 
 // 识别「导航/确认/跳过」类指令（如"进入下一步""好的""跳过"）。
 // 命中则跳过变更分析；若存在就绪阶段，进一步走 AUTO 早返回分支直接推进（省去一次 AI 调用）。
@@ -197,7 +203,23 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const sse = new ReadableStream({
         async start(controller) {
           try {
-            const affectedList = affectedOutputs
+            // 交互原型是方案文档的派生生成物：方案受影响且原型已生成时，一并列入受影响清单。
+            // 依赖顺序位于方案文档之后、需求文档之前。
+            const displayOutputs = [...affectedOutputs].sort(
+              (a, b) => OUTPUT_DEP_ORDER.indexOf(a) - OUTPUT_DEP_ORDER.indexOf(b)
+            );
+            if (displayOutputs.includes("design") && !displayOutputs.includes("prototype")) {
+              const proto = await db
+                .get<{ current_version?: number }>("prototypes", requirementId, "requirement_id")
+                .catch(() => null);
+              if (proto && (proto.current_version ?? 0) > 0) {
+                const idx = displayOutputs.indexOf("prd");
+                if (idx >= 0) displayOutputs.splice(idx, 0, "prototype");
+                else displayOutputs.push("prototype");
+              }
+            }
+
+            const affectedList = displayOutputs
               .map((o) => `- ${OUTPUT_LABELS[o] ?? o}`)
               .join("\n");
 
@@ -277,9 +299,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
             controller.enqueue(encoder.encode(`event: done\ndata: {}\n\n`));
 
-            // 落库变更完成总结（确保刷新页面/退出重进后仍可回显）。
-            const changeDoneMsg = `✅ 变更已处理完成，涉及 ${affectedOutputs.map((o) => OUTPUT_LABELS[o] ?? o).join("、")}。如需进一步调整请继续描述。`;
-            await addMessage(requirementId, "assistant", changeDoneMsg).catch(() => {});
+            // 变更完成总结已迁移到 `conversation/summary` 端点：原写法会在 SSE 早期
+            // （紧跟在 change_update 之后、四路重生成启动之前）写库，导致基于 id ASC
+            // 排序的对话列表里「✅ 变更已处理完成」跑到「调研分析/方案文档/... 已更新」
+            // 之前——刷新页面/退出重进后会看到错乱。新时机由前端在 EVT.CHANGE_COMPLETE
+            // （= 全部重生成已落库）触发，保证 DB 顺序与对话渲染一致。
           } catch (e) {
             const m = e instanceof Error ? e.message : String(e);
             controller.enqueue(

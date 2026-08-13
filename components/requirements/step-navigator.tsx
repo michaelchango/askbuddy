@@ -120,11 +120,6 @@ export default function StepNavigator({
                   <span className="text-[13px] font-medium leading-tight" style={{ color: visual.color }}>
                     {isGenerating ? "生成中…" : visual.label}
                   </span>
-                  {node.key === "design" && workflow?.designSubPhase === "prototype" && (
-                    <span className="mt-0.5 rounded-full bg-[#FFF7ED] px-2 py-0.5 text-[11px] font-medium text-[#F54900]">
-                      含原型设计
-                    </span>
-                  )}
                 </div>
               </div>
               {index < NODES.length - 1 && (
