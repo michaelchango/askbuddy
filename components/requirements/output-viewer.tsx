@@ -241,10 +241,10 @@ export function OutputViewer({
   }, [generating, isValidating, data]);
 
   // 非生成态下切换文档（outputType/subType）或版本（version）时，回到顶部
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (generating || !scrollRef.current) return;
     scrollRef.current.scrollTop = 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outputType, subType, version]);
 
   const versions = data?.versions ?? [];

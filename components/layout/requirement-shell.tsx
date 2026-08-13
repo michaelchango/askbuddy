@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import useSWR, { mutate as globalMutate } from "swr";
@@ -345,7 +345,7 @@ export function RequirementShell({
         generatingStepRef.current = null;
       }
     },
-    [requirementId, refreshSteps, refreshOutputs]
+    [req, requirementId, refreshSteps, refreshOutputs]
   );
 
   // ===== 变更更新队列：按依赖顺序串行重生成所有受影响的输出物 =====
@@ -498,7 +498,7 @@ export function RequirementShell({
         })
       );
     },
-    [handleGenerate, requirementId]
+    [handleGenerate, req, requirementId]
   );
 
   // 监听对话面板的 change_update 事件（AI 检测到变更点）
@@ -608,19 +608,22 @@ export function RequirementShell({
   }, [pendingPrompt, handleGenerate, requirementId, refreshSteps]);
 
   // 用户点击【返回修改】：在对话输入框填入默认修改文案
-  const RETURN_MODIFY_TEXT: Record<StepName, string> = {
-    dialoguing: "我需要补充/修改需求：\n",
-    research_analysis: "请帮我修改调研分析：\n",
-    design: "请帮我修改方案设计：\n",
-    prd_writing: "请帮我修改需求文档：\n",
-  };
+  const RETURN_MODIFY_TEXT = useMemo<Record<StepName, string>>(
+    () => ({
+      dialoguing: "我需要补充/修改需求：\n",
+      research_analysis: "请帮我修改调研分析：\n",
+      design: "请帮我修改方案设计：\n",
+      prd_writing: "请帮我修改需求文档：\n",
+    }),
+    []
+  );
   const handleReturnToModify = useCallback(() => {
     const step = pendingPrompt?.step;
     const defaultText = step ? RETURN_MODIFY_TEXT[step] : "请帮我修改：\n";
     window.dispatchEvent(
       new CustomEvent(EVT.REQUEST_MODIFY, { detail: { defaultText } })
     );
-  }, [pendingPrompt]);
+  }, [pendingPrompt, RETURN_MODIFY_TEXT]);
 
   // 进入原型子阶段后自动根据方案设计生成可交互原型（复用与 handleGenerate 相同的 SSE 解析）
   // 参数 changeNote：变更模式下携带"该文档要改什么"，后端据此做精准修改而非盲重生成；
@@ -764,7 +767,7 @@ export function RequirementShell({
         generatingStepRef.current = null;
       }
     },
-    [requirementId, refreshSteps, refreshOutputs]
+    [req, requirementId, refreshSteps, refreshOutputs]
   );
   // 将原型生成函数挂到 ref，供 handleProceed 在运行时调用（规避 TDZ）
   generatePrototypeRef.current = generatePrototype;

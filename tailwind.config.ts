@@ -33,7 +33,7 @@ const config: Config = {
         surface2: "#F2F0EB",
       },
       fontFamily: {
-        sans: ["Plus Jakarta Sans", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ["var(--font-plus-jakarta)", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["Consolas", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
       borderRadius: {

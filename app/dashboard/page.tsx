@@ -268,7 +268,14 @@ export default function DashboardOverview() {
           </p>
         ) : (
           <div className="mt-[18px] grid grid-cols-1 gap-[18px] sm:grid-cols-2 lg:grid-cols-3">
-            {projects.map((p) => {
+            {[...projects]
+              .sort((a, b) => {
+                const ta = latestRequirementUpdatedAt(requirements, a.id) ?? a.updatedAt ?? "";
+                const tb = latestRequirementUpdatedAt(requirements, b.id) ?? b.updatedAt ?? "";
+                return tb.localeCompare(ta);
+              })
+              .slice(0, 3)
+              .map((p) => {
               return (
                 <div key={p.id} className="relative">
                   <Link
@@ -319,6 +326,7 @@ export default function DashboardOverview() {
       <section className="mt-[36px]">
         <div className="flex items-center justify-between">
           <h2 className="text-[18px] font-bold text-[#111111]">最近需求</h2>
+          {false && (
           <Link
             href="/dashboard/projects"
             className="flex items-center gap-1 text-[13.5px] font-medium text-brand"
@@ -327,6 +335,7 @@ export default function DashboardOverview() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/figma-dash/18.svg" alt="" className="h-[13px] w-[13px]" />
           </Link>
+          )}
         </div>
 
         {recentReqs.length === 0 ? (
@@ -351,7 +360,7 @@ export default function DashboardOverview() {
                   >
                     <div className="flex items-center gap-[10px]">
                       <RequirementStatusIcon status={r.status} bg={meta.bg} color={meta.text} />
-                      <span className="font-medium text-[#111111]">{r.title || "Untitled"}</span>
+                      <span className="font-bold text-[#111111]">{r.title || "Untitled"}</span>
                     </div>
                     <div>
                       <span
