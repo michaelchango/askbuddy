@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import type { Project, Requirement } from "@/types";
@@ -32,6 +32,28 @@ function ProjectCard({ project, reqCount, updatedAt, onDeleted }: ProjectCardPro
   const [renameValue, setRenameValue] = useState(project.name);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [savingRename, setSavingRename] = useState(false);
+  const confirmDialogRef = useRef<HTMLDialogElement>(null);
+  const renameDialogRef = useRef<HTMLDialogElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const el = confirmDialogRef.current;
+    if (!el) return;
+    if (confirmOpen && !el.open) el.showModal();
+    else if (!confirmOpen && el.open) el.close();
+  }, [confirmOpen]);
+
+  useEffect(() => {
+    const el = renameDialogRef.current;
+    if (!el) return;
+    if (renameOpen && !el.open) {
+      el.showModal();
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    } else if (!renameOpen && el.open) {
+      el.close();
+    }
+  }, [renameOpen]);
 
   async function handleDelete() {
     setDeleting(true);
@@ -171,112 +193,135 @@ function ProjectCard({ project, reqCount, updatedAt, onDeleted }: ProjectCardPro
       />
 
       {/* 二次确认弹窗 */}
-      {confirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-[2px]">
-          <div className="w-full max-w-[380px] rounded-[18px] bg-white p-[28px] shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
-            {/* 警告图标 */}
-            <div className="mx-auto flex h-[56px] w-[56px] items-center justify-center rounded-full bg-[#E5484D1a]">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#E5484D"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-[26px] w-[26px]"
-                aria-hidden
-              >
-                <path d="M3 6h18" />
-                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                <path d="M10 11v6M14 11v6" />
-              </svg>
-            </div>
-
-            <h3 className="mt-[18px] text-center text-[19px] font-bold text-[#111111]">
-              删除项目
-            </h3>
-            <p className="mt-[12px] text-center text-[13.5px] leading-relaxed text-[#78746C]">
-              确定要删除「<span className="font-semibold text-[#111111]">{project.name}</span>」吗？删除后不可恢复，相关需求也会一并删除。
-            </p>
-
-            {deleteError && (
-              <p className="mt-[14px] rounded-[10px] border border-[#E5484D33] bg-[#E5484D0d] px-3 py-2 text-center text-[12.5px] text-[#E5484D]">
-                {deleteError}
-              </p>
-            )}
-
-            <div className="mt-[26px] flex gap-[12px]">
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmOpen(false);
-                  setDeleteError(null);
-                }}
-                disabled={deleting}
-                className="h-[44px] flex-1 rounded-[12px] border border-[#1111111a] bg-white text-[14.4px] font-semibold text-[#111111] transition-colors hover:bg-[#F2F0EB] disabled:opacity-60"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="h-[44px] flex-1 rounded-[12px] bg-[#E5484D] text-[14.4px] font-semibold text-white transition-colors hover:bg-[#cf3b3f] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {deleting ? "删除中…" : "删除"}
-              </button>
-            </div>
-          </div>
+      <dialog
+        ref={confirmDialogRef}
+        closedby="any"
+        aria-labelledby="confirm-delete-title"
+        className="m-0 w-full max-w-[380px] rounded-[18px] bg-white p-[28px] shadow-[0_24px_60px_rgba(0,0,0,0.28)] backdrop:bg-black/40 backdrop:backdrop-blur-[2px]"
+        onCancel={(e) => {
+          e.preventDefault();
+          if (!deleting) {
+            setConfirmOpen(false);
+            setDeleteError(null);
+          }
+        }}
+      >
+        {/* 警告图标 */}
+        <div className="mx-auto flex h-[56px] w-[56px] items-center justify-center rounded-full bg-[#E5484D1a]">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#E5484D"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-[26px] w-[26px]"
+            aria-hidden
+          >
+            <path d="M3 6h18" />
+            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <path d="M10 11v6M14 11v6" />
+          </svg>
         </div>
-      )}
+
+        <h3
+          id="confirm-delete-title"
+          className="mt-[18px] text-center text-[19px] font-bold text-[#111111]"
+        >
+          删除项目
+        </h3>
+        <p className="mt-[12px] text-center text-[13.5px] leading-relaxed text-[#78746C]">
+          确定要删除「<span className="font-semibold text-[#111111]">{project.name}</span>」吗？删除后不可恢复，相关需求也会一并删除。
+        </p>
+
+        {deleteError && (
+          <p className="mt-[14px] rounded-[10px] border border-[#E5484D33] bg-[#E5484D0d] px-3 py-2 text-center text-[12.5px] text-[#E5484D]">
+            {deleteError}
+          </p>
+        )}
+
+        <div className="mt-[26px] flex gap-[12px]">
+          <button
+            type="button"
+            onClick={() => {
+              setConfirmOpen(false);
+              setDeleteError(null);
+            }}
+            disabled={deleting}
+            className="h-[44px] flex-1 rounded-[12px] border border-[#1111111a] bg-white text-[14.4px] font-semibold text-[#111111] transition-colors hover:bg-[#F2F0EB] disabled:opacity-60"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="h-[44px] flex-1 rounded-[12px] bg-[#E5484D] text-[14.4px] font-semibold text-white transition-colors hover:bg-[#cf3b3f] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {deleting ? "删除中…" : "删除"}
+          </button>
+        </div>
+      </dialog>
 
       {/* 重命名弹窗 */}
-      {renameOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-[2px]">
-          <div className="w-full max-w-[380px] rounded-[18px] bg-white p-[28px] shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
-            <h3 className="text-center text-[19px] font-bold text-[#111111]">重命名项目</h3>
-            <p className="mt-[8px] text-center text-[13px] text-[#78746C]">修改项目名称，不可与其他项目重名</p>
-            <input
-              autoFocus
-              value={renameValue}
-              onChange={(e) => {
-                setRenameValue(e.target.value);
-                if (renameError) setRenameError(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !savingRename) handleRename();
-              }}
-              placeholder="请输入项目名称"
-              className={
-                "mt-[18px] h-[45px] w-full rounded-[13px] border bg-white px-[18px] text-[15.75px] text-[#111111] outline-none transition-colors placeholder:text-[#78746C] focus:border-[#f66612] " +
-                (renameError ? "border-[#f66612]" : "border-[#1111111a]")
-              }
-            />
-            {renameError && (
-              <p className="mt-[6px] text-[12px] text-[#f66612]">{renameError}</p>
-            )}
-            <div className="mt-[26px] flex gap-[12px]">
-              <button
-                type="button"
-                onClick={() => setRenameOpen(false)}
-                disabled={savingRename}
-                className="h-[44px] flex-1 rounded-[12px] border border-[#1111111a] bg-white text-[14.4px] font-semibold text-[#111111] transition-colors hover:bg-[#F2F0EB] disabled:opacity-60"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={handleRename}
-                disabled={savingRename}
-                className="h-[44px] flex-1 rounded-[12px] bg-[#f66612] text-[14.4px] font-semibold text-white transition-colors hover:bg-[#D85A10] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {savingRename ? "保存中…" : "保存"}
-              </button>
-            </div>
-          </div>
+      <dialog
+        ref={renameDialogRef}
+        closedby="any"
+        aria-labelledby="rename-title"
+        className="m-0 w-full max-w-[380px] rounded-[18px] bg-white p-[28px] shadow-[0_24px_60px_rgba(0,0,0,0.28)] backdrop:bg-black/40 backdrop:backdrop-blur-[2px]"
+        onCancel={(e) => {
+          e.preventDefault();
+          if (!savingRename) setRenameOpen(false);
+        }}
+      >
+        <h3
+          id="rename-title"
+          className="text-center text-[19px] font-bold text-[#111111]"
+        >
+          重命名项目
+        </h3>
+        <p className="mt-[8px] text-center text-[13px] text-[#78746C]">
+          修改项目名称，不可与其他项目重名
+        </p>
+        <input
+          ref={renameInputRef}
+          value={renameValue}
+          onChange={(e) => {
+            setRenameValue(e.target.value);
+            if (renameError) setRenameError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !savingRename) handleRename();
+          }}
+          placeholder="请输入项目名称"
+          className={
+            "mt-[18px] h-[45px] w-full rounded-[13px] border bg-white px-[18px] text-[15.75px] text-[#111111] outline-none transition-colors placeholder:text-[#78746C] focus:border-[#f66612] " +
+            (renameError ? "border-[#f66612]" : "border-[#1111111a]")
+          }
+        />
+        {renameError && (
+          <p className="mt-[6px] text-[12px] text-[#f66612]">{renameError}</p>
+        )}
+        <div className="mt-[26px] flex gap-[12px]">
+          <button
+            type="button"
+            onClick={() => setRenameOpen(false)}
+            disabled={savingRename}
+            className="h-[44px] flex-1 rounded-[12px] border border-[#1111111a] bg-white text-[14.4px] font-semibold text-[#111111] transition-colors hover:bg-[#F2F0EB] disabled:opacity-60"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={handleRename}
+            disabled={savingRename}
+            className="h-[44px] flex-1 rounded-[12px] bg-[#f66612] text-[14.4px] font-semibold text-white transition-colors hover:bg-[#D85A10] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {savingRename ? "保存中…" : "保存"}
+          </button>
         </div>
-      )}
+      </dialog>
     </div>
   );
 }

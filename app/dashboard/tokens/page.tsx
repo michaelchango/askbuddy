@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
@@ -87,6 +87,24 @@ export default function TokenManagementPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [copied, setCopied] = useState(false);
+  const tokenDialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const el = tokenDialogRef.current;
+    if (!el) return;
+    const shouldOpen = showTokenModal && !!newRawToken;
+    if (shouldOpen && !el.open) el.showModal();
+    else if (!shouldOpen && el.open) el.close();
+  }, [showTokenModal, newRawToken]);
+
+  const deleteDialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const el = deleteDialogRef.current;
+    if (!el) return;
+    if (deleteConfirm && !el.open) el.showModal();
+    else if (!deleteConfirm && el.open) el.close();
+  }, [deleteConfirm]);
 
   const guideRef = useRef<HTMLDivElement>(null);
 
@@ -205,90 +223,100 @@ export default function TokenManagementPage() {
         </div>
 
         {/* Token 生成弹窗 */}
-        {showTokenModal && newRawToken && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="w-[520px] rounded-xl bg-white shadow-xl">
-              <div className="flex items-center justify-between border-b border-[#E5E7EB] px-6 py-4">
-                <div className="flex items-center gap-2">
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 18 18"
-                    fill="none"
-                    stroke="#F59E0B"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  >
-                    <circle cx="9" cy="9" r="6.5" />
-                    <path d="M9 5.5v4M9 12.5v.01" />
-                  </svg>
-                  <h3 className="text-[16px] font-semibold text-[#111111]">
-                    Token 已生成
-                  </h3>
-                </div>
+        <dialog
+          ref={tokenDialogRef}
+          closedby="any"
+          aria-labelledby="token-modal-title"
+          className="m-0 w-[520px] max-w-[92vw] rounded-xl bg-white shadow-xl backdrop:bg-black/40"
+          onCancel={(e) => {
+            e.preventDefault();
+            setShowTokenModal(false);
+          }}
+        >
+          <div className="rounded-xl bg-white">
+            <div className="flex items-center justify-between border-b border-[#E5E7EB] px-6 py-4">
+              <div className="flex items-center gap-2">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 18 18"
+                  fill="none"
+                  stroke="#F59E0B"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                >
+                  <circle cx="9" cy="9" r="6.5" />
+                  <path d="M9 5.5v4M9 12.5v.01" />
+                </svg>
+                <h3
+                  id="token-modal-title"
+                  className="text-[16px] font-semibold text-[#111111]"
+                >
+                  Token 已生成
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTokenModal(false)}
+                className="rounded-lg p-1.5 text-[#9CA3AF] transition-colors hover:bg-[#F3F4F6] hover:text-[#374151]"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <path d="M4 4l8 8M12 4l-8 8" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-[13px] text-[#6B7280]">
+                请立即复制并妥善保存此密钥，<strong className="text-[#DC2626]">关闭后将无法再次查看</strong>。
+              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <code className="flex-1 break-all rounded-lg border border-[#D1D5DB] bg-[#F9FAFB] px-3 py-2.5 text-[13px] text-[#111111] font-mono leading-relaxed">
+                  {newRawToken}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(newRawToken!)}
+                  className={`flex h-[42px] w-[88px] shrink-0 items-center justify-center gap-1.5 rounded-lg border text-[13px] font-medium transition-all ${
+                    copied
+                      ? "border-[#10B981] bg-[#ECFDF5] text-[#059669]"
+                      : "border-[#D1D5DB] bg-white text-[#374151] hover:bg-[#F9FAFB]"
+                  }`}
+                >
+                  {copied ? (
+                    <>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 7.5 6 10.5 11 4.5" />
+                      </svg>
+                      已复制
+                    </>
+                  ) : (
+                    <>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="4" y="4" width="7.5" height="7.5" rx="1.5" />
+                        <path d="M2.5 10V3a1 1 0 011-1h5.5" />
+                      </svg>
+                      复制
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+            <div className="rounded-b-xl border-t border-[#E5E7EB] bg-[#F9FAFB] px-6 py-3">
+              <div className="flex items-center justify-between">
+                <p className="text-[12px] text-[#F59E0B]">
+                  确认已复制后再关闭此窗口
+                </p>
                 <button
                   type="button"
                   onClick={() => setShowTokenModal(false)}
-                  className="rounded-lg p-1.5 text-[#9CA3AF] transition-colors hover:bg-[#F3F4F6] hover:text-[#374151]"
+                  className="rounded-lg bg-[#F97316] px-4 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-[#EA580C]"
                 >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                    <path d="M4 4l8 8M12 4l-8 8" />
-                  </svg>
+                  我已复制，关闭
                 </button>
-              </div>
-              <div className="px-6 py-5">
-                <p className="text-[13px] text-[#6B7280]">
-                  请立即复制并妥善保存此密钥，<strong className="text-[#DC2626]">关闭后将无法再次查看</strong>。
-                </p>
-                <div className="mt-3 flex items-center gap-2">
-                  <code className="flex-1 break-all rounded-lg border border-[#D1D5DB] bg-[#F9FAFB] px-3 py-2.5 text-[13px] text-[#111111] font-mono leading-relaxed">
-                    {newRawToken}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(newRawToken)}
-                    className={`flex h-[42px] w-[88px] shrink-0 items-center justify-center gap-1.5 rounded-lg border text-[13px] font-medium transition-all ${
-                      copied
-                        ? "border-[#10B981] bg-[#ECFDF5] text-[#059669]"
-                        : "border-[#D1D5DB] bg-white text-[#374151] hover:bg-[#F9FAFB]"
-                    }`}
-                  >
-                    {copied ? (
-                      <>
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="3 7.5 6 10.5 11 4.5" />
-                        </svg>
-                        已复制
-                      </>
-                    ) : (
-                      <>
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="4" y="4" width="7.5" height="7.5" rx="1.5" />
-                          <path d="M2.5 10V3a1 1 0 011-1h5.5" />
-                        </svg>
-                        复制
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-              <div className="rounded-b-xl border-t border-[#E5E7EB] bg-[#F9FAFB] px-6 py-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-[12px] text-[#F59E0B]">
-                    确认已复制后再关闭此窗口
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setShowTokenModal(false)}
-                    className="rounded-lg bg-[#F97316] px-4 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-[#EA580C]"
-                  >
-                    我已复制，关闭
-                  </button>
-                </div>
               </div>
             </div>
           </div>
-        )}
+        </dialog>
 
       </section>
 
@@ -377,34 +405,42 @@ export default function TokenManagementPage() {
       </section>
 
       {/* ===== 删除确认对话框 ===== */}
-      {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-          <div className="w-[400px] rounded-xl bg-white p-6 shadow-xl">
-            <h3 className="text-[16px] font-semibold text-[#111111]">
-              确认删除
-            </h3>
-            <p className="mt-2 text-[14px] text-[#6B7280]">
-              此操作将永久删除该 Token，无法恢复。确定要继续吗？
-            </p>
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setDeleteConfirm(null)}
-                className="rounded-lg border border-[#D1D5DB] px-4 py-2 text-[13px] font-medium text-[#374151] transition-colors hover:bg-[#F9FAFB]"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={() => hardDelete(deleteConfirm)}
-                className="rounded-lg bg-[#EF4444] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#DC2626]"
-              >
-                确认删除
-              </button>
-            </div>
-          </div>
+      <dialog
+        ref={deleteDialogRef}
+        closedby="any"
+        aria-labelledby="delete-token-title"
+        className="m-0 w-[400px] max-w-[92vw] rounded-xl bg-white p-6 shadow-xl backdrop:bg-black/30"
+        onCancel={(e) => {
+          e.preventDefault();
+          setDeleteConfirm(null);
+        }}
+      >
+        <h3
+          id="delete-token-title"
+          className="text-[16px] font-semibold text-[#111111]"
+        >
+          确认删除
+        </h3>
+        <p className="mt-2 text-[14px] text-[#6B7280]">
+          此操作将永久删除该 Token，无法恢复。确定要继续吗？
+        </p>
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setDeleteConfirm(null)}
+            className="rounded-lg border border-[#D1D5DB] px-4 py-2 text-[13px] font-medium text-[#374151] transition-colors hover:bg-[#F9FAFB]"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={() => hardDelete(deleteConfirm!)}
+            className="rounded-lg bg-[#EF4444] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#DC2626]"
+          >
+            确认删除
+          </button>
         </div>
-      )}
+      </dialog>
 
       {/* ===== 区块四：配置引导 ===== */}
       <section ref={guideRef} className="mt-[18px] rounded-[13px] border border-[#1111111a] bg-white">

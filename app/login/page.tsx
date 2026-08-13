@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +25,14 @@ function LoginInner() {
   const [error, setError] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [showAgreeModal, setShowAgreeModal] = useState(false);
+  const agreeDialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const el = agreeDialogRef.current;
+    if (!el) return;
+    if (showAgreeModal && !el.open) el.showModal();
+    else if (!showAgreeModal && el.open) el.close();
+  }, [showAgreeModal]);
 
   // 登录/注册：调用 /api/auth/* 写入会话并进入控制台
   async function enterConsole() {
@@ -255,35 +263,45 @@ function LoginInner() {
       </div>
     </div>
 
-    {showAgreeModal && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-6">
-        <div className="w-full max-w-[380px] rounded-[16px] bg-white p-6 shadow-xl">
-          <h3 className="text-[18px] font-bold text-[#111111]">温馨提示</h3>
-          <p className="mt-3 text-[14.4px] leading-relaxed text-[#78746C]">
-            请阅读并同意《用户协议》和《隐私政策》后注册。是否确认继续？
-          </p>
-          <div className="mt-6 flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setShowAgreeModal(false)}
-              className="rounded-[9px] border border-[#1111111a] px-4 py-2 text-[14.4px] font-medium text-[#111111]"
-            >
-              取消
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setShowAgreeModal(false);
-                enterConsole();
-              }}
-              className="rounded-[9px] bg-[#f66612] px-4 py-2 text-[14.4px] font-semibold text-white hover:bg-[#D85A10]"
-            >
-              确认
-            </button>
-        </div>
+    <dialog
+      ref={agreeDialogRef}
+      closedby="any"
+      aria-labelledby="agree-modal-title"
+      className="m-0 max-w-[380px] rounded-[16px] bg-white p-6 shadow-xl backdrop:bg-black/40"
+      onCancel={(e) => {
+        e.preventDefault();
+        setShowAgreeModal(false);
+      }}
+    >
+      <h3
+        id="agree-modal-title"
+        className="text-[18px] font-bold text-[#111111]"
+      >
+        温馨提示
+      </h3>
+      <p className="mt-3 text-[14.4px] leading-relaxed text-[#78746C]">
+        请阅读并同意《用户协议》和《隐私政策》后注册。是否确认继续？
+      </p>
+      <div className="mt-6 flex justify-end gap-3">
+        <button
+          type="button"
+          onClick={() => setShowAgreeModal(false)}
+          className="rounded-[9px] border border-[#1111111a] px-4 py-2 text-[14.4px] font-medium text-[#111111]"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setShowAgreeModal(false);
+            enterConsole();
+          }}
+          className="rounded-[9px] bg-[#f66612] px-4 py-2 text-[14.4px] font-semibold text-white hover:bg-[#D85A10]"
+        >
+          确认
+        </button>
       </div>
-    </div>
-    )}
+    </dialog>
     </>
   );
 }

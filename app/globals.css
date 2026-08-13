@@ -46,3 +46,81 @@ button,
 .cursor-pointer {
   cursor: pointer !important;
 }
+
+/* ===== 原生 dialog / popover 进出动画（Modern Web Guidance: animate-to-from-top-layer） ===== */
+/* 使用 @starting-style + transition-behavior: allow-discrete + overlay，
+   让 top-layer 元素在 display:none <-> 可见 之间平滑过渡，无需 JS 动画库。 */
+
+dialog,
+[popover] {
+  opacity: 0;
+  transform: scale(0.95);
+
+  /* MANDATORY: 过渡 display 与 overlay 才能在 top layer 进出时保持可见并防止被裁剪 */
+  transition-property: opacity, transform, display, overlay;
+  transition-duration: 0.2s;
+  transition-timing-function: ease-out;
+  /* MANDATORY: 写在简写之后，避免被覆盖 */
+  transition-behavior: allow-discrete;
+}
+
+dialog[open],
+[popover]:popover-open {
+  opacity: 1;
+  transform: scale(1);
+
+  /* 进入起始态：必须写在 open 状态之后 */
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* 遮罩层淡入淡出 */
+dialog::backdrop,
+[popover]::backdrop {
+  background-color: rgb(0 0 0 / 0);
+  transition:
+    display 0.2s allow-discrete,
+    overlay 0.2s allow-discrete,
+    background-color 0.2s ease-out;
+}
+
+dialog[open]::backdrop,
+[popover]:popover-open::backdrop {
+  background-color: rgb(0 0 0 / 0.4);
+
+  @starting-style {
+    background-color: rgb(0 0 0 / 0);
+  }
+}
+
+/* 尊重用户的减少动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  dialog,
+  [popover] {
+    transform: none;
+    transition-duration: 0.1s;
+  }
+
+  @starting-style {
+    dialog[open],
+    [popover]:popover-open {
+      transform: none;
+    }
+  }
+}
+
+/* ===== 视图过渡（View Transitions）===== */
+/* 跨文档导航兜底：仅对整文档 MPA 导航生效（如未来静态导出场景），SPA 软导航
+   由 components/view-transitions.tsx 的同文档方式处理。两者互不冲突。 */
+@view-transition {
+  navigation: auto;
+}
+
+/* 默认 root 快照过渡动画（现代浏览器渐进增强；不支持则无过渡，无副作用） */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.25s;
+  animation-timing-function: ease-out;
+}
