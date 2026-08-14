@@ -21,6 +21,8 @@ export const EVT = {
   GEN_ERROR: "askbuddy:gen-error",
   /** 定位来源：从产物条目跳回产生它的那轮对话并高亮 */
   LOCATE_SOURCE: "askbuddy:locate-source",
+  /** 按钮手动进入下一阶段：shell 派发推进提示，panel 无 rid 守卫必收 */
+  PROCEED_TIP: "askbuddy:proceed-tip",
 } as const;
 
 export type EvtName = (typeof EVT)[keyof typeof EVT];

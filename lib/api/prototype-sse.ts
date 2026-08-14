@@ -4,7 +4,7 @@ import { streamPrototype, type StreamPrototypeOpts } from "@/lib/ai/steps/protot
 import { extractPrototype } from "@/lib/ai/parse";
 import { savePrototypeVersion } from "@/lib/services/prototypes";
 import { AI_TASK_MODEL } from "@/lib/ai/models";
-import { getSteps, setAwaitingConfirm, nextStepOf } from "@/lib/services/steps";
+import { getSteps, setAwaitingConfirm, setStepGenerating, nextStepOf } from "@/lib/services/steps";
 import { addMessage } from "@/lib/services/conversations";
 import { touchRequirement } from "@/lib/services/requirements";
 
@@ -14,21 +14,36 @@ export async function prototypeSSE(
 ): Promise<Response> {
   const isEdit = !!(opts.baseVersionId || opts.changeNote);
   const taskType = isEdit ? "prototype_edit" : "prototype_gen";
+  // 原型属于 design 组的子产物，复用 design 步骤的「生成中」标记（跨页面/会话持久化）
+  await setStepGenerating(requirementId, "design", true).catch(() => {});
   const stream = await streamPrototype(requirementId, opts);
   const encoder = new TextEncoder();
   let full = "";
 
   const sse = new ReadableStream({
     async start(controller) {
+      // 客户端可能中途断开（切走/关闭页面），此时 controller.enqueue 会抛错。
+      // 但生成任务仍应在后台继续跑完并落库，故引入「安全发送」：发送失败仅标记客户端已断开，
+      // 不中断后台读取与 finalize，保证 generating 标记在真正完成后才置 false。
+      let clientClosed = false;
+      const send = (event: string, data: unknown) => {
+        if (clientClosed) return;
+        try {
+          controller.enqueue(
+            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          );
+        } catch {
+          clientClosed = true;
+        }
+      };
+
       try {
         const reader = stream.getReader();
         for (;;) {
           const { value, done } = await reader.read();
           if (done) break;
           full += value;
-          controller.enqueue(
-            encoder.encode(`event: delta\ndata: ${JSON.stringify(full)}\n\n`)
-          );
+          send("delta", full);
         }
 
         const { html, structure } = extractPrototype(full);
@@ -47,15 +62,9 @@ export async function prototypeSSE(
 
         const steps = await getSteps(requirementId).catch(() => null);
         if (steps) {
-          controller.enqueue(
-            encoder.encode(`event: step_update\ndata: ${JSON.stringify(steps)}\n\n`)
-          );
+          send("step_update", steps);
         }
-        controller.enqueue(
-          encoder.encode(
-            `event: gen_message\ndata: ${JSON.stringify({ content: genMessage })}\n\n`
-          )
-        );
+        send("gen_message", { content: genMessage });
 
         // 生成（或更新）原型直接落库：编辑模式基于 baseVersionId 出新版本
         const saved = await savePrototypeVersion(
@@ -71,35 +80,26 @@ export async function prototypeSSE(
         // 区分了前沿 / 上游，此处原型需与之一致。
         if (!isEdit) {
           await setAwaitingConfirm(requirementId, "design", true).catch(() => {});
-          controller.enqueue(
-            encoder.encode(
-              `event: proceed_prompt\ndata: ${JSON.stringify({
-                step: "design",
-                nextStep: nextStepOf("design"),
-                canSkip: false,
-                message: "原型已就绪，确认后进入需求文档阶段。",
-              })}\n\n`
-            )
-          );
+          send("proceed_prompt", {
+            step: "design",
+            nextStep: nextStepOf("design"),
+            canSkip: false,
+            message: "原型已就绪，确认后进入需求文档阶段。",
+          });
         }
 
-        controller.enqueue(
-          encoder.encode(
-            `event: done\ndata: ${JSON.stringify({
-              version: saved.version,
-              structure: saved.structure,
-            })}\n\n`
-          )
-        );
+        send("done", { version: saved.version, structure: saved.structure });
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
-        controller.enqueue(
-          encoder.encode(
-            `event: error\ndata: ${JSON.stringify({ message })}\n\n`
-          )
-        );
+        send("error", { message });
       } finally {
-        controller.close();
+        // 兜底清除 design 步骤的「生成中」标记：成功/失败/断连都必须置 false
+        await setStepGenerating(requirementId, "design", false).catch(() => {});
+        try {
+          controller.close();
+        } catch {
+          /* 客户端已断开时 controller 可能已关闭，忽略 */
+        }
       }
     },
   });

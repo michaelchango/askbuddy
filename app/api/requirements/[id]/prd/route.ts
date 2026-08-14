@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { runGeneration, finalizeStep } from "@/lib/ai/orchestrator";
-import { getSteps, markStepDone, markStepInProgress, setStepState, nextStepOf, isFrontierStep } from "@/lib/services/steps";
+import { getSteps, markStepDone, markStepInProgress, setStepState, setStepGenerating, nextStepOf, isFrontierStep } from "@/lib/services/steps";
 import { addMessage } from "@/lib/services/conversations";
 import { touchRequirement } from "@/lib/services/requirements";
 import { db } from "@/lib/db";
@@ -18,8 +18,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const body = await req.json().catch(() => ({}));
   const mode: "normal" | "change" = body?.mode === "change" ? "change" : "normal";
 
-  // 需求文档进入【进行中】
+  // 需求文档进入【进行中】，并标记「生成中」开始（跨页面/会话持久化）
   await markStepInProgress(params.id, "prd_writing").catch(() => {});
+  await setStepGenerating(params.id, "prd_writing", true).catch(() => {});
 
   // 【P0 修遗留】客户端断开 → 立即取消后台 DC 任务，释放 token + DB 连接
   // 否则 fire-and-forget 任务会跑满 180s 没人能停，挤占连接池
@@ -35,16 +36,31 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const sse = new ReadableStream({
     async start(controller) {
+      // 客户端可能中途断开（切走/关闭页面），此时 controller.enqueue 会抛错。
+      // 但生成任务仍应在后台继续跑完并落库，故引入「安全发送」：发送失败仅标记客户端已断开，
+      // 不中断后台读取与 finalize，保证 generating 标记在真正完成后才置 false。
+      let clientClosed = false;
+      const send = (event: string, data: unknown) => {
+        if (clientClosed) return;
+        try {
+          controller.enqueue(
+            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          );
+        } catch {
+          clientClosed = true;
+        }
+      };
+
       try {
         const stepsEarly = await getSteps(params.id);
-        controller.enqueue(encoder.encode(`event: step_update\ndata: ${JSON.stringify(stepsEarly)}\n\n`));
+        send("step_update", stepsEarly);
 
         const reader = stream.getReader();
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
           full += value;
-          controller.enqueue(encoder.encode(`event: delta\ndata: ${JSON.stringify(full)}\n\n`));
+          send("delta", full);
         }
 
         // 生成结果直写库（normal 与 change 统一走 finalizeStep，产物直接落库）
@@ -93,26 +109,22 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         }
 
         const steps = await getSteps(params.id);
-        controller.enqueue(encoder.encode(`event: step_update\ndata: ${JSON.stringify(steps)}\n\n`));
-        controller.enqueue(encoder.encode(`event: gen_message\ndata: ${JSON.stringify({ content: genMessage })}\n\n`));
+        send("step_update", steps);
+        send("gen_message", { content: genMessage });
         // 下发确认闸门：前沿阶段生成完成后等待用户手动确认
         if (isFrontier) {
-          controller.enqueue(
-            encoder.encode(
-              `event: proceed_prompt\ndata: ${JSON.stringify({
-                step: "prd_writing",
-                nextStep,
-                canSkip: false,
-                message:
-                  mode === "normal"
-                    ? "需求文档已生成，请在下方确认。"
-                    : "需求文档已更新，请在下方确认。",
-                version,
-              })}\n\n`
-            )
-          );
+          send("proceed_prompt", {
+            step: "prd_writing",
+            nextStep,
+            canSkip: false,
+            message:
+              mode === "normal"
+                ? "需求文档已生成，请在下方确认。"
+                : "需求文档已更新，请在下方确认。",
+            version,
+          });
         }
-        controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ type: resultType })}\n\n`));
+        send("done", { type: resultType });
 
         // M2：PRD 生成完成后，同源并列触发 DevContext 生成。
         // 关键修复：DevContext 改为「后台异步、不阻塞 SSE」。
@@ -120,30 +132,35 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         // 会一直撑着 SSE 连接不关闭，而客户端「左栏可点击 / 完成通知」都写在
         // reader 循环之后（连接关闭后才执行），导致 PRD 明明已好却「卡很久」。
         // 因此 fire-and-forget，SSE 立即关闭；DevContext 完成后由前端面板轮询刷新。
-        controller.enqueue(
-          encoder.encode(
-            `event: devcontext_update\ndata: ${JSON.stringify({ version: null, pending: true })}\n\n`
-          )
-        );
-        // 【P0 修遗留】改用 scheduleDevContextGeneration：注册到集中任务表，
-        // 同一 requirementId 并发触发时复用现有 Promise，外部可主动 abort。
-        const { promise } = scheduleDevContextGeneration(params.id, {
-          trigger: "prd_writing",
-          timeoutMs: Number(process.env.DEVCONTEXT_TIMEOUT_MS ?? 180000),
-        });
-        promise
-          .then((v) => console.log(`[devcontext] requirement=${params.id} 生成完成 v${v}`))
-          .catch((e) =>
-            console.error(
-              `[devcontext] requirement=${params.id} 生成失败：`,
-              e instanceof Error ? e.message : e
-            )
-          );
+        // 注：客户端断开后不再发送 devcontext_update，避免 controller.close 抛错。
+        if (!clientClosed) {
+          send("devcontext_update", { version: null, pending: true });
+          // 【P0 修遗留】改用 scheduleDevContextGeneration：注册到集中任务表，
+          // 同一 requirementId 并发触发时复用现有 Promise，外部可主动 abort。
+          const { promise } = scheduleDevContextGeneration(params.id, {
+            trigger: "prd_writing",
+            timeoutMs: Number(process.env.DEVCONTEXT_TIMEOUT_MS ?? 180000),
+          });
+          promise
+            .then((v) => console.log(`[devcontext] requirement=${params.id} 生成完成 v${v}`))
+            .catch((e) =>
+              console.error(
+                `[devcontext] requirement=${params.id} 生成失败：`,
+                e instanceof Error ? e.message : e
+              )
+            );
+        }
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ message })}\n\n`));
+        send("error", { message });
       } finally {
-        controller.close();
+        // 兜底清除「生成中」标记：成功/失败/断连都必须置 false，避免永久卡在生成中
+        await setStepGenerating(params.id, "prd_writing", false).catch(() => {});
+        try {
+          controller.close();
+        } catch {
+          /* 客户端已断开时 controller 可能已关闭，忽略 */
+        }
       }
     },
   });

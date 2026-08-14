@@ -11,7 +11,7 @@ import { PageContainer, PageHeader } from "@/components/layout/page";
 import { ProjectNewForm } from "@/components/project-new-form";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
-import { Trash2 } from "lucide-react";
+import { Trash2, Loader2 } from "lucide-react";
 
 /** 需求状态图标：统一「带底色方框 + 居中图标」样式，方框底色与状态标签一致，大小统一 */
 function RequirementStatusIcon({
@@ -203,7 +203,17 @@ export default function DashboardOverview() {
     });
     mutateProjects();
   };
-  const { data: requirements = [] } = useSWR<Requirement[]>("/api/requirements", fetcher);
+  const { data: requirements = [], mutate: mutateRequirements } = useSWR<Requirement[]>("/api/requirements", fetcher);
+
+  // 若有需求正在生成中，低频轮询列表以在生成完成后自动刷新状态与阶段标签。
+  const anyGenerating = requirements.some((r) => !!r.generatingStep);
+  useEffect(() => {
+    if (!anyGenerating) return;
+    const id = setInterval(() => {
+      mutateRequirements();
+    }, 3000);
+    return () => clearInterval(id);
+  }, [anyGenerating, mutateRequirements]);
 
   const projectMap = new Map(projects.map((p) => [p.id, p]));
   const reqCount = new Map<string, number>();
@@ -250,11 +260,11 @@ export default function DashboardOverview() {
 
       {/* ===== 我的项目 ===== */}
       <section className="mt-[36px]">
-        <div className="flex items-center justify-between">
-          <h2 className="text-[18px] font-bold text-[#111111]">我的项目</h2>
+        <div className="flex min-h-[38px] items-start justify-between gap-4">
+          <h2 className="text-[18px] font-bold leading-[38px] text-[#111111]">我的项目</h2>
           <Link
             href="/dashboard/projects"
-            className="flex items-center gap-1 text-[13.5px] font-medium text-[#f66612]"
+            className="flex h-[38px] items-center gap-1 text-[13.5px] font-medium text-[#f66612]"
           >
             查看全部
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -362,13 +372,19 @@ export default function DashboardOverview() {
                       <RequirementStatusIcon status={r.status} bg={meta.bg} color={meta.text} />
                       <span className="font-bold text-[#111111]">{r.title || "Untitled"}</span>
                     </div>
-                    <div>
+                    <div className="flex items-center gap-[6px]">
                       <span
                         className="inline-block rounded-[7px] px-[11.25px] py-[4.5px] text-[11px] font-medium"
                         style={{ backgroundColor: meta.bg, color: meta.text }}
                       >
                         {meta.label}
                       </span>
+                      {r.generatingStep && (
+                        <span className="flex items-center gap-1 rounded-[7px] bg-[#f666121a] px-[9px] py-[4.5px] text-[11px] font-medium text-brand">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          生成中
+                        </span>
+                      )}
                     </div>
                     <div className="text-[#78746C]">{proj?.name ?? "—"}</div>
                     <div className="text-[#78746C]">{relativeTime(r.updatedAt)}</div>

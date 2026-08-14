@@ -88,6 +88,7 @@ export const FIELD_MAP: Readonly<Record<string, Readonly<Record<string, string>>
     completion: "completion", // [暂不使用]
     state: "state",
     awaiting_confirm: "awaiting_confirm",
+    generating: "generating",
     note: "note",
     output_version: "output_version",
     completed_at: "completed_at",

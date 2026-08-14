@@ -111,6 +111,7 @@ CREATE TABLE requirement_steps (
   state            TEXT        NOT NULL DEFAULT 'not_started'
                      CHECK (state IN ('not_started', 'in_progress', 'done', 'pending_update')),
   awaiting_confirm SMALLINT    NOT NULL DEFAULT 0,       -- 确认闸门：1=待用户手动确认进入下一阶段
+  generating       SMALLINT    NOT NULL DEFAULT 0,       -- 生成中标记：1=该步骤产物正在生成（跨页面/会话持久化，退出页面后仍可恢复）
   note             TEXT        NULL,
   output_version   INTEGER     NULL,
   completed_at     TIMESTAMPTZ NULL,

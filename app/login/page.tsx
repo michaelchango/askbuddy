@@ -267,7 +267,7 @@ function LoginInner() {
       ref={agreeDialogRef}
       closedby="any"
       aria-labelledby="agree-modal-title"
-      className="m-0 max-w-[380px] rounded-[16px] bg-white p-6 shadow-xl backdrop:bg-black/40"
+      className="w-full max-w-[380px] rounded-[16px] bg-white p-6 shadow-xl backdrop:bg-black/40"
       onCancel={(e) => {
         e.preventDefault();
         setShowAgreeModal(false);

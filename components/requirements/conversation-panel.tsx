@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { EVT } from "@/lib/events";
 import { ArrowUp, Link2, Plus, User, X, Copy, Check, ArrowRight, CheckCircle2 } from "lucide-react";
 import { ReferencePanel, type PickedReference } from "./reference-panel";
+import MarkdownRenderer from "./markdown-renderer";
 import { useWorkflow } from "@/components/requirements/workflow-context";
 import type { OutputMeta, OutputType } from "@/lib/services/outputs";
 import type { RequirementStatus } from "@/types";
@@ -133,14 +134,34 @@ export function ConversationPanel({
   const [refOpen, setRefOpen] = useState(false);
 
   useEffect(() => {
-    if (data && messages.length === 0 && !hasSentRef.current) {
+    if (!data) return;
+    // 初次挂载且尚未本地发送过消息：用服务端数据完整初始化（沿用原行为）
+    if (messages.length === 0 && !hasSentRef.current) {
       // 兜底排序：旧 conversation/route.ts 在 SSE 早期写入了「✅ 变更已处理完成」
       // summary 消息，导致这条 summary 在 DB 里出现在「调研分析/方案文档/... 已更新」
       // 之前。虽然后续重建已迁移落库时机，但 DB 里仍残留历史数据，刷新页面/退出重进
       // 后会看到错位。这里在 UI 层做一次纯函数重排，把 summary 提升到所属变更批次最后。
       // 注意：不影响 id/created_at 字段，仅调整数组展示位置，对话跳转 data-turn 也保持稳定。
       setMessages(reorderForDisplay(data as Msg[]));
+      return;
     }
+    // 增量同步：data 被重新拉取后，若服务端有本地 state 没有的消息，按 id 去重追加，
+    // 并叠加内容去重（覆盖整个数组），避免 GEN_MESSAGE 事件链 + 后端落库双路径并存
+    // 时（包括中间插入其他消息导致末尾去重失效）的同内容重复显示。
+    // 覆盖场景：requirement-shell 通过 mutate(/conversation) 让 SWR 重新拉取时，把后端
+    // addMessage 落库的新消息带回对话面板（按钮手动进入下一阶段的推进提示走这里）。
+    // GEN_MESSAGE 事件链已存在做即时显示，本 effect 做兜底持久化同步。
+    setMessages((prev) => {
+      const knownIds = new Set(prev.map((m) => m.id));
+      const knownKeys = new Set(prev.map((m) => `${m.role}::${m.content}`));
+      const additions = (data as Msg[]).filter((m) => {
+        if (knownIds.has(m.id)) return false;
+        if (knownKeys.has(`${m.role}::${m.content}`)) return false;
+        return true;
+      });
+      if (additions.length === 0) return prev;
+      return [...prev, ...additions];
+    });
   }, [data, messages.length]);
 
   useEffect(() => {
@@ -443,6 +464,34 @@ export function ConversationPanel({
     return () => window.removeEventListener(EVT.GEN_MESSAGE, handler);
   }, [rid]);
 
+  // 监听【按钮手动进入下一阶段】专用推进提示事件（无 rid 守卫，必收）。
+  // 与 GEN_MESSAGE 监听器互补：本通道用于绕开 rid/双 mount 时序不一致导致的
+  // 静默失效问题，确保按钮路径的推进提示一定能 append 到对话列表。
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { content?: string; requirementId?: string };
+      const content = detail?.content;
+      if (!content) return;
+      // 只在 rid 已 set 且与派发端 requirementId 不匹配时丢弃（防止跨页面串扰）
+      if (rid && detail.requirementId && detail.requirementId !== rid) return;
+      setMessages((m) => {
+        const last = m[m.length - 1];
+        if (last && last.role === "assistant" && last.content === content) return m;
+        return [
+          ...m,
+          {
+            id: nextMsgId(),
+            role: "assistant",
+            content,
+            created_at: new Date().toISOString(),
+          },
+        ];
+      });
+    };
+    window.addEventListener(EVT.PROCEED_TIP, handler);
+    return () => window.removeEventListener(EVT.PROCEED_TIP, handler);
+  }, [rid]);
+
   // 监听【返回修改】→ 在输入框填入默认修改文案并聚焦，供用户补充修改点
   useEffect(() => {
     const handler = (e: Event) => {
@@ -617,15 +666,15 @@ export function ConversationPanel({
                   ))}
                 </div>
               )}
-              <span
-                className={`inline-block whitespace-pre-wrap px-4 py-2.5 text-[15.75px] leading-relaxed ${
-                  m.role === "user"
-                    ? "rounded-bl-[18px] rounded-br-[18px] rounded-tl-[18px] rounded-tr-[5px] bg-brand text-white"
-                    : "rounded-bl-[18px] rounded-br-[18px] rounded-tl-[5px] rounded-tr-[18px] bg-[#F9F8F5] text-[#111111] ring-1 ring-[#1111111a]"
-                }`}
-              >
-                {m.content}
-              </span>
+              {m.role === "user" ? (
+                <span className="inline-block whitespace-pre-wrap rounded-bl-[18px] rounded-br-[18px] rounded-tl-[18px] rounded-tr-[5px] bg-brand px-4 py-2.5 text-[15.75px] leading-relaxed text-white">
+                  {m.content}
+                </span>
+              ) : (
+                <span className="inline-block rounded-bl-[18px] rounded-br-[18px] rounded-tl-[5px] rounded-tr-[18px] bg-[#F9F8F5] px-4 py-2.5 text-[15.75px] leading-relaxed text-[#111111] ring-1 ring-[#1111111a]">
+                  <MarkdownRenderer content={m.content} disableMermaid />
+                </span>
+              )}
               {m.role === "user" ? (
                 <div className="mt-1 flex items-center gap-2 px-1">
                   <span className="text-[11px] text-slate-400">
@@ -659,8 +708,8 @@ export function ConversationPanel({
                 <img src="/logo-orange.png" alt="AskBuddy" className="h-7 w-7 object-contain" />
             </span>
             <div className="flex min-w-0 max-w-[80%] flex-col items-start">
-              <span className="inline-block whitespace-pre-wrap rounded-bl-[18px] rounded-br-[18px] rounded-tl-[5px] rounded-tr-[18px] bg-[#F9F8F5] px-4 py-2.5 text-[15.75px] leading-relaxed text-[#111111] ring-1 ring-[#1111111a]">
-                {draft}
+              <span className="inline-block rounded-bl-[18px] rounded-br-[18px] rounded-tl-[5px] rounded-tr-[18px] bg-[#F9F8F5] px-4 py-2.5 text-[15.75px] leading-relaxed text-[#111111] ring-1 ring-[#1111111a]">
+                <MarkdownRenderer content={draft} disableMermaid />
                 <span className="ml-0.5 inline-block h-4 w-1.5 translate-y-0.5 animate-pulse bg-brand" />
               </span>
               <span className="mt-1 px-1 text-[11px] text-slate-400">生成中…</span>

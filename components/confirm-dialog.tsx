@@ -46,7 +46,7 @@ export function ConfirmDialog({
       ref={ref}
       closedby="any"
       aria-labelledby="confirm-dialog-title"
-      className="m-0 max-w-[380px] rounded-[16px] border border-[#1111111a] bg-white p-[22px] shadow-[0_20px_60px_-12px_rgba(17,17,17,0.25)] backdrop:bg-black/30 backdrop:backdrop-blur-[1px]"
+      className="w-full max-w-[380px] rounded-[16px] border border-[#1111111a] bg-white p-[22px] shadow-[0_20px_60px_-12px_rgba(17,17,17,0.25)] backdrop:bg-black/30 backdrop:backdrop-blur-[1px]"
       // `closedby="any"` covers Escape + backdrop. For browsers without it
       // (e.g. Safari) the cancel event keeps the Escape-dismiss + parent sync.
       onCancel={(e) => {

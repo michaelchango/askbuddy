@@ -227,7 +227,7 @@ export default function TokenManagementPage() {
           ref={tokenDialogRef}
           closedby="any"
           aria-labelledby="token-modal-title"
-          className="m-0 w-[520px] max-w-[92vw] rounded-xl bg-white shadow-xl backdrop:bg-black/40"
+          className="w-[520px] max-w-[92vw] rounded-xl bg-white shadow-xl backdrop:bg-black/40"
           onCancel={(e) => {
             e.preventDefault();
             setShowTokenModal(false);
@@ -409,7 +409,7 @@ export default function TokenManagementPage() {
         ref={deleteDialogRef}
         closedby="any"
         aria-labelledby="delete-token-title"
-        className="m-0 w-[400px] max-w-[92vw] rounded-xl bg-white p-6 shadow-xl backdrop:bg-black/30"
+        className="w-[400px] max-w-[92vw] rounded-xl bg-white p-6 shadow-xl backdrop:bg-black/30"
         onCancel={(e) => {
           e.preventDefault();
           setDeleteConfirm(null);

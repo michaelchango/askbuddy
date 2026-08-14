@@ -1,49 +1,26 @@
+// 阶段推导（依赖 db 的部分）。
+//
+// ⚠️ 本文件会 import db（Node 后端），因此【只能被服务端代码引用】，
+// 禁止被 "use client" 组件直接 import，否则会把 @cloudbase/node-sdk 打进浏览器 bundle。
+// 客户端组件请改用 @/lib/stage-meta 获取 STAGE_LABELS / proceedReplyText /
+// deriveRequirementStatus（纯前端安全，无 db 依赖）。
+//
+// 这里 re-export 纯前端内容，保持旧 import 路径 @/lib/stage 的兼容。
+export { STAGE_LABELS, proceedReplyText } from "@/lib/stage-meta";
+// 显式 import，使 deriveRequirementStatus / isCardFinalized 成为本作用域内的绑定，
+// attachDerivedStatus 才能正确调用（re-export 不会被当作本地定义）。
+import { deriveRequirementStatus, isCardFinalized } from "@/lib/stage-meta";
+
 // 阶段推导：依据 requirement_steps 的实际完成情况实时算出需求当前阶段。
 // 独立于 services 层，仅依赖 db / steps-meta / types，避免与 projects/requirements 形成循环依赖。
 import { db } from "@/lib/db";
 import { STEP_KEYS } from "@/lib/steps-meta";
 import type {
   Requirement,
-  RequirementStatus,
   RequirementStep,
   StepCompletion,
-  StepName,
   StepState,
 } from "@/types";
-
-// 步骤 → 阶段状态 的映射（步骤完成度由 requirement_steps 表独立管理，
-// 阶段标签据步骤 state 实时推导，不再依赖创建后不再更新的 requirement.status 字段）。
-const STEP_TO_STATUS: Record<StepName, RequirementStatus> = {
-  dialoguing: "dialoguing",
-  research_analysis: "researching",
-  design: "designing",
-  prd_writing: "prd_writing",
-};
-
-/**
- * 纯函数：依据 requirement_steps 的实际完成情况推导需求当前所处阶段。
- * - 已归档 → "archived"
- * - 全部步骤 done → "completed"
- * - 否则取首个未完成步骤，映射为其对应阶段
- * - 无步骤记录（存量老数据未初始化）→ 回退到原 status，避免崩溃
- */
-export function deriveRequirementStatus(
-  req: Requirement,
-  steps: RequirementStep[]
-): RequirementStatus {
-  // 口径统一为 snake_case：写入侧与各处 list 过滤用的都是 archived_at，
-  // 这里原本读的是 camelCase 的 archivedAt，因此该分支从未命中过（M1 修复）。
-  if (req.archived_at) return "archived";
-  // 无步骤记录 = 存量老数据未初始化。requirements 表已无 status 列（M1 T9），
-  // 读出必为 undefined，回退到工作流第一阶段而不是 undefined，避免 UI 拿到空状态。
-  if (steps.length === 0) return req.status ?? "dialoguing";
-  const sorted = [...steps].sort(
-    (a, b) => STEP_KEYS.indexOf(a.step) - STEP_KEYS.indexOf(b.step)
-  );
-  const current = sorted.find((s) => s.state !== "done");
-  if (!current) return "completed";
-  return STEP_TO_STATUS[current.step];
-}
 
 /**
  * 批量附加推导后的 status：一次扫描取回所有需求的 steps 并按 requirementId 分组，
@@ -66,6 +43,7 @@ export async function attachDerivedStatus(
     note?: string;
     output_version?: number;
     awaiting_confirm?: number | boolean;
+    generating?: number | boolean;
     completed_at?: string;
     updated_at: string;
   }>("requirement_steps", { where: { requirement_id: { in: ids } } });
@@ -82,6 +60,7 @@ export async function attachDerivedStatus(
       note: r.note,
       outputVersion: r.output_version,
       awaitingConfirm: !!r.awaiting_confirm,
+      generating: !!r.generating,
       completedAt: r.completed_at,
       updatedAt: r.updated_at,
     };
@@ -89,8 +68,28 @@ export async function attachDerivedStatus(
     grouped.get(rid)!.push(step);
   }
 
-  return requirements.map((req) => ({
-    ...req,
-    status: deriveRequirementStatus(req, grouped.get(req.id) ?? []),
-  }));
+  return requirements.map((req) => {
+    const steps = grouped.get(req.id) ?? [];
+    // 派生「需求卡片是否已定版」：current_version 是 requirements 表的非标准代码键
+    // （未在 Requirement 类型声明），需用 Record 形态安全读取。该字段由首次定版
+    // （dialoguing 置 done）写入，不可回退，是「卡片已完成态」最可靠的判据。
+    const currentVersion =
+      ((req as unknown as Record<string, unknown>)?.current_version as number) ?? 0;
+    const dialoguing = steps.find((s) => s.step === "dialoguing");
+    const cardFinalized = isCardFinalized(
+      !!dialoguing?.awaitingConfirm,
+      currentVersion,
+      dialoguing?.state
+    );
+    // 派生「当前正在生成的步骤」：取首个 generating=true 的步骤。
+    // 阶段标签由 deriveRequirementStatus 依据 state 推导（生成中的步骤 state 已是
+    // in_progress，故 status 天然指向该步骤对应阶段），此处额外暴露 generatingStep
+    // 供前端在阶段标签旁叠加「生成中」动效/角标。
+    const generating = steps.find((s) => s.generating === true);
+    return {
+      ...req,
+      status: deriveRequirementStatus(req, steps, { cardFinalized }),
+      generatingStep: generating ? generating.step : null,
+    };
+  });
 }

@@ -35,6 +35,7 @@ export interface RequirementStep {
   note?: string;
   outputVersion?: number;
   awaitingConfirm?: boolean;        // 确认闸门：true 表示已生成/达标、等待用户手动确认进入下一阶段
+  generating?: boolean;             // 生成中标记：true 表示该步骤产物正在生成（跨页面/会话持久化）
   completedAt?: string;
   updatedAt: string;
 }
@@ -75,6 +76,12 @@ export interface Requirement {
    * （恒为 'dialoguing'），M1 已连同该列一并移除。读到的永远是推导值。
    */
   status: RequirementStatus;
+  /**
+   * 【派生字段，不落库】当前正在生成的步骤（无则为 null/undefined）。
+   * 由 lib/stage.ts:attachDerivedStatus 依据 requirement_steps.generating 注入，
+   * 供列表页展示「生成中」动效/角标使用。
+   */
+  generatingStep?: StepName | null;
   priority?: "low" | "medium" | "high";
   tags?: string[];
   category?: string;

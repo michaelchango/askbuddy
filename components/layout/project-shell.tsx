@@ -4,7 +4,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import useSWR from "swr";
-import { ChevronRight } from "lucide-react";
+import {
+  ChevronRight,
+  Search,
+  FileText,
+  MonitorPlay,
+  ScrollText,
+  Settings,
+} from "lucide-react";
 import type { Project, Requirement } from "@/types";
 import { UserContext, type ShellUser } from "@/components/layout/dashboard-shell";
 
@@ -29,62 +36,35 @@ const PROJECT_NAV = [
     label: "调研库",
     href: (id: string) => `/dashboard/projects/${id}/research`,
     match: (p: string, base: string) => p.startsWith(`${base}/research`),
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="11" cy="11" r="7" />
-        <path d="m21 21-4.3-4.3" />
-      </svg>
-    ),
+    icon: <Search className="h-[18px] w-[18px]" />,
   },
   {
     key: "solution",
     label: "方案库",
     href: (id: string) => `/dashboard/projects/${id}/solution`,
     match: (p: string, base: string) => p.startsWith(`${base}/solution`),
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-      </svg>
-    ),
+    icon: <FileText className="h-[18px] w-[18px]" />,
   },
   {
     key: "prototype",
     label: "原型库",
     href: (id: string) => `/dashboard/projects/${id}/prototype`,
     match: (p: string, base: string) => p.startsWith(`${base}/prototype`),
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 19l7-7 3 3-7 7-3-3z" />
-        <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
-        <path d="M2 2l7.586 7.586" />
-        <circle cx="11" cy="11" r="2" />
-      </svg>
-    ),
+    icon: <MonitorPlay className="h-[18px] w-[18px]" />,
   },
   {
     key: "docs",
     label: "文档库",
     href: (id: string) => `/dashboard/projects/${id}/docs`,
     match: (p: string, base: string) => p.startsWith(`${base}/docs`),
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <path d="M14 2v6a2 2 0 0 0 2 2h6" />
-        <path d="M9 13h6M9 17h6" />
-      </svg>
-    ),
+    icon: <ScrollText className="h-[18px] w-[18px]" />,
   },
   {
     key: "settings",
     label: "设置",
     href: (id: string) => `/dashboard/projects/${id}/settings`,
     match: (p: string, base: string) => p.startsWith(`${base}/settings`),
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-      </svg>
-    ),
+    icon: <Settings className="h-[18px] w-[18px]" />,
   },
 ];
 

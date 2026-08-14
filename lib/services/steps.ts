@@ -66,6 +66,7 @@ export async function getSteps(requirementId: string): Promise<RequirementStep[]
     note?: string;
     output_version?: number;
     awaiting_confirm?: number | boolean;
+    generating?: number | boolean;
     completed_at?: string;
     updated_at: string;
   }>("requirement_steps", {
@@ -88,6 +89,7 @@ export async function getSteps(requirementId: string): Promise<RequirementStep[]
       note: r.note,
       outputVersion: r.output_version,
       awaitingConfirm: !!r.awaiting_confirm,
+      generating: !!r.generating,
       completedAt: r.completed_at,
       updatedAt: r.updated_at,
     }))
@@ -101,7 +103,12 @@ export async function setStepState(
   requirementId: string,
   step: StepName,
   state: StepState,
-  options?: { note?: string; outputVersion?: number; awaitingConfirm?: boolean }
+  options?: {
+    note?: string;
+    outputVersion?: number;
+    awaitingConfirm?: boolean;
+    generating?: boolean;
+  }
 ): Promise<void> {
   const now = new Date().toISOString();
 
@@ -115,6 +122,10 @@ export async function setStepState(
   // 仅当显式传入时才覆盖 awaiting_confirm，避免误清除已开启的确认闸门
   if (options?.awaitingConfirm !== undefined) {
     patch.awaiting_confirm = options.awaitingConfirm ? 1 : 0;
+  }
+  // 仅当显式传入时才覆盖 generating，避免误清除生成中标记
+  if (options?.generating !== undefined) {
+    patch.generating = options.generating ? 1 : 0;
   }
 
   // 只需要判断存在性，用 countMany 而不是把整行拉回来。
@@ -212,4 +223,27 @@ export async function setAwaitingConfirm(
     { requirement_id: requirementId, step },
     { awaiting_confirm: value ? 1 : 0, updated_at: new Date().toISOString() }
   );
+}
+
+// 仅更新生成中标记 generating（不影响 state/version 等其它字段）。
+// 用于「产物开始生成 / 生成结束」的持久化标记，使列表页与详情页在
+// 退出/重进页面后仍能读取到「生成中」事实源，跨会话恢复生成态。
+export async function setStepGenerating(
+  requirementId: string,
+  step: StepName,
+  generating: boolean
+): Promise<void> {
+  await db.updateWhere(
+    "requirement_steps",
+    { requirement_id: requirementId, step },
+    { generating: generating ? 1 : 0, updated_at: new Date().toISOString() }
+  );
+  // 立即失效列表/详情缓存，让派生 status 与 generatingStep 尽早反映新值，
+  // 而不是等待 5s TTL 自然过期（缩短列表页「生成中」角标的出现/消失延迟）。
+  try {
+    const { invalidateRequirementsCache } = await import("./requirements");
+    invalidateRequirementsCache();
+  } catch {
+    /* 缓存失效失败不阻断生成标记主流程 */
+  }
 }

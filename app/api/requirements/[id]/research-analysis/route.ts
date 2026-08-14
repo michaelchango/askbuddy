@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { runGeneration, finalizeStep } from "@/lib/ai/orchestrator";
-import { getSteps, markStepDone, markStepInProgress, setAwaitingConfirm, nextStepOf, isFrontierStep } from "@/lib/services/steps";
+import { getSteps, markStepDone, markStepInProgress, setAwaitingConfirm, setStepGenerating, nextStepOf, isFrontierStep } from "@/lib/services/steps";
 import { addMessage } from "@/lib/services/conversations";
 import { touchRequirement } from "@/lib/services/requirements";
 import { db } from "@/lib/db";
@@ -21,8 +21,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (mode === "normal") {
     await markStepDone(params.id, "dialoguing").catch(() => {});
   }
-  // 调研分析进入【进行中】
+  // 调研分析进入【进行中】，并标记「生成中」开始（跨页面/会话持久化）
   await markStepInProgress(params.id, "research_analysis").catch(() => {});
+  await setStepGenerating(params.id, "research_analysis", true).catch(() => {});
 
   const stream = await runGeneration("research_analysis", params.id, {
     message: body?.message ?? "",
@@ -34,17 +35,32 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const sse = new ReadableStream({
     async start(controller) {
+      // 客户端可能中途断开（切走/关闭页面），此时 controller.enqueue 会抛错。
+      // 但生成任务仍应在后台继续跑完并落库，故引入「安全发送」：发送失败仅标记客户端已断开，
+      // 不中断后台读取与 finalize，保证 generating 标记在真正完成后才置 false。
+      let clientClosed = false;
+      const send = (event: string, data: unknown) => {
+        if (clientClosed) return;
+        try {
+          controller.enqueue(
+            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          );
+        } catch {
+          clientClosed = true;
+        }
+      };
+
       try {
         // 生成开始前推送状态，确保节点立即翻转
         const stepsEarly = await getSteps(params.id);
-        controller.enqueue(encoder.encode(`event: step_update\ndata: ${JSON.stringify(stepsEarly)}\n\n`));
+        send("step_update", stepsEarly);
 
         const reader = stream.getReader();
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
           full += value;
-          controller.enqueue(encoder.encode(`event: delta\ndata: ${JSON.stringify(full)}\n\n`));
+          send("delta", full);
         }
 
         // 生成结果直写库（normal 与 change 统一走 finalizeStep，产物直接落库）
@@ -86,33 +102,35 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         }
 
         const steps = await getSteps(params.id);
-        controller.enqueue(encoder.encode(`event: step_update\ndata: ${JSON.stringify(steps)}\n\n`));
+        send("step_update", steps);
         // 实时展示合成消息
-        controller.enqueue(encoder.encode(`event: gen_message\ndata: ${JSON.stringify({ content: genMessage })}\n\n`));
+        send("gen_message", { content: genMessage });
         // 下发确认闸门：前沿阶段生成完成后等待用户手动确认
         if (isFrontier) {
-          controller.enqueue(
-            encoder.encode(
-              `event: proceed_prompt\ndata: ${JSON.stringify({
-                step: "research_analysis",
-                nextStep,
-                canSkip: false,
-                message:
-                  mode === "normal"
-                    ? "调研报告已生成，请在下方确认后进入下一阶段。"
-                    : "调研报告已更新，请在下方确认后进入下一阶段。",
-                version,
-              })}\n\n`
-            )
-          );
+          send("proceed_prompt", {
+            step: "research_analysis",
+            nextStep,
+            canSkip: false,
+            message:
+              mode === "normal"
+                ? "调研报告已生成，请在下方确认后进入下一阶段。"
+                : "调研报告已更新，请在下方确认后进入下一阶段。",
+            version,
+          });
         }
-        controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ type: resultType })}\n\n`));
+        send("done", { type: resultType });
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         console.error("[trace|research_analysis] SSE 流异常:", e);
-        controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ message })}\n\n`));
+        send("error", { message });
       } finally {
-        controller.close();
+        // 兜底清除「生成中」标记：成功/失败/断连都必须置 false，避免永久卡在生成中
+        await setStepGenerating(params.id, "research_analysis", false).catch(() => {});
+        try {
+          controller.close();
+        } catch {
+          /* 客户端已断开时 controller 可能已关闭，忽略 */
+        }
       }
     },
   });

@@ -197,7 +197,7 @@ function ProjectCard({ project, reqCount, updatedAt, onDeleted }: ProjectCardPro
         ref={confirmDialogRef}
         closedby="any"
         aria-labelledby="confirm-delete-title"
-        className="m-0 w-full max-w-[380px] rounded-[18px] bg-white p-[28px] shadow-[0_24px_60px_rgba(0,0,0,0.28)] backdrop:bg-black/40 backdrop:backdrop-blur-[2px]"
+        className="w-full max-w-[380px] rounded-[18px] bg-white p-[28px] shadow-[0_24px_60px_rgba(0,0,0,0.28)] backdrop:bg-black/40 backdrop:backdrop-blur-[2px]"
         onCancel={(e) => {
           e.preventDefault();
           if (!deleting) {
@@ -269,7 +269,7 @@ function ProjectCard({ project, reqCount, updatedAt, onDeleted }: ProjectCardPro
         ref={renameDialogRef}
         closedby="any"
         aria-labelledby="rename-title"
-        className="m-0 w-full max-w-[380px] rounded-[18px] bg-white p-[28px] shadow-[0_24px_60px_rgba(0,0,0,0.28)] backdrop:bg-black/40 backdrop:backdrop-blur-[2px]"
+        className="w-full max-w-[380px] rounded-[18px] bg-white p-[28px] shadow-[0_24px_60px_rgba(0,0,0,0.28)] backdrop:bg-black/40 backdrop:backdrop-blur-[2px]"
         onCancel={(e) => {
           e.preventDefault();
           if (!savingRename) setRenameOpen(false);
@@ -326,15 +326,56 @@ function ProjectCard({ project, reqCount, updatedAt, onDeleted }: ProjectCardPro
   );
 }
 
+type SortBy = "updatedAt" | "createdAt";
+
+const sortLabels: Record<SortBy, string> = {
+  updatedAt: "更新时间",
+  createdAt: "创建时间",
+};
+
+/** 排序切换：两个选项直接平铺展示，点击即可切换。 */
+function SortTabs({
+  value,
+  onChange,
+}: {
+  value: SortBy;
+  onChange: (v: SortBy) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="排序方式"
+      className="inline-flex items-center rounded-[8px] border border-[#1111111a] bg-white p-[3px]"
+    >
+      {(["updatedAt", "createdAt"] as SortBy[]).map((k) => (
+        <button
+          key={k}
+          type="button"
+          onClick={() => onChange(k)}
+          aria-pressed={value === k}
+          className={`h-[26px] rounded-[6px] px-3 text-[13px] font-medium transition-colors ${
+            value === k
+              ? "bg-[#f66612] text-white"
+              : "text-[#78746C] hover:bg-[#F2F0EB] hover:text-[#111111]"
+          }`}
+        >
+          {sortLabels[k]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function ProjectsPage() {
   const [q, setQ] = useState("");
+  const [sortBy, setSortBy] = useState<SortBy>("updatedAt");
   const { data: projects = [], mutate } = useSWR<Project[]>("/api/projects", fetcher);
   const { data: requirements = [] } = useSWR<Requirement[]>("/api/requirements", fetcher);
   const reqCount = new Map<string, number>();
   for (const r of requirements) {
     reqCount.set(r.projectId, (reqCount.get(r.projectId) ?? 0) + 1);
   }
-  // 各项目下需求的最近更新时间（用于项目卡片左下角展示）
+  // 各项目下需求的最近更新时间（用于项目卡片左下角展示与排序）
   const latestUpdatedAt = new Map<string, string>();
   for (const r of requirements) {
     if (!r.updatedAt) continue;
@@ -342,9 +383,18 @@ export default function ProjectsPage() {
     if (!cur || r.updatedAt > cur) latestUpdatedAt.set(r.projectId, r.updatedAt);
   }
   const keyword = q.trim().toLowerCase();
-  const list = keyword
+  const list = (keyword
     ? projects.filter((p) => p.name.toLowerCase().includes(keyword))
-    : projects;
+    : projects
+  ).sort((a, b) => {
+    const keyA = sortBy === "updatedAt"
+      ? (latestUpdatedAt.get(a.id) ?? a.updatedAt)
+      : a.createdAt;
+    const keyB = sortBy === "updatedAt"
+      ? (latestUpdatedAt.get(b.id) ?? b.updatedAt)
+      : b.createdAt;
+    return keyB.localeCompare(keyA);
+  });
 
   return (
     <PageContainer>
@@ -373,20 +423,19 @@ export default function ProjectsPage() {
         }
       />
 
-      {/* ===== 项目列表 ===== */}
+      {/* ===== 我的项目 ===== */}
       <section className="mt-[36px]">
-        <div className="flex items-center">
-          <div className="relative inline-flex items-center">
-            <h2 className="text-[18px] font-bold text-[#111111]">我的项目</h2>
-            <div className="absolute left-full top-1/2 ml-[18px] -translate-y-1/2">
-              <SearchInput
-                value={q}
-                onChange={setQ}
-                placeholder="搜索项目名称"
-                aria-label="搜索项目名称"
-              />
-            </div>
+        <div className="flex min-h-[38px] items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-4">
+            <h2 className="text-[18px] font-bold leading-[38px] text-[#111111]">我的项目</h2>
+            <SearchInput
+              value={q}
+              onChange={setQ}
+              placeholder="搜索项目名称"
+              aria-label="搜索项目名称"
+            />
           </div>
+          <SortTabs value={sortBy} onChange={setSortBy} />
         </div>
 
         {projects.length === 0 ? (

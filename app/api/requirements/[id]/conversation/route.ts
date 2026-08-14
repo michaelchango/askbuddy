@@ -55,13 +55,9 @@ function outputToStep(output: string): StepName | null {
   return map[output] ?? null;
 }
 
-// 步骤中文标签（用于确认闸门话术）
-const STAGE_LABELS: Record<string, string> = {
-  dialoguing: "需求确认",
-  research_analysis: "调研分析",
-  design: "方案设计",
-  prd_writing: "需求文档",
-};
+// 步骤中文标签（STAGE_LABELS）/ 推进话术（proceedReplyText）统一复用前端 lib/stage.ts，
+// 确保对话自动推进与按钮手动进入下一阶段的提示文案同源、保持一致。
+import { STAGE_LABELS, proceedReplyText } from "@/lib/stage";
 
 // 生成物名称（区别于阶段名称：调研报告≠调研分析、方案文档≠方案设计）
 const OUTPUT_LABELS: Record<string, string> = {
@@ -114,12 +110,6 @@ function computeCurrentReadyStep(
 // 弱确认词：好的/可以/确认/没问题/明白了/OK 等。这类词仅在阶段已就绪（awaitingConfirm）时才推进，
 // 避免对话中途一句"好的"误跳过需求采集等阶段。
 const weakConfirmPattern = /^(好的|好滴|可以|行|没问题|确认|确定|是的|对|明白|了解|ok|yes)/i;
-
-// 用户主动确认推进时的合成回复话术（保证非空，修复气泡消失）
-function proceedReplyText(step: StepName, nextStep: StepName | null): string {
-  if (!nextStep) return `好的，${STAGE_LABELS[step] ?? ""}已完成，已为您标记完成。`;
-  return `好的，${STAGE_LABELS[step] ?? ""}已确认。正在为您推进到「${STAGE_LABELS[nextStep]}」…`;
-}
 
 // 步骤名 → 输出物类型（outputToStep 的逆映射）
 const STEP_TO_OUTPUT: Record<string, string> = {
@@ -355,10 +345,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         }
       }
       const encoder = new TextEncoder();
-      const replyText =
-        subPhase === "prototype"
-          ? `✅ 已确认「${STAGE_LABELS[step] ?? ""}」的方案文档，正在为您进入『原型设计（交互原型）』…`
-          : proceedReplyText(step, effectiveNextStep);
+      // 统一调用 proceedReplyText 推导文案：包括「方案设计 → 原型设计」子阶段特殊分支，
+      // 都跟按钮路径与 lib/stage-meta.ts 走同一份逻辑，避免三条路径下文案漂移（用户截图
+      // 反馈原"✅ 已确认..."风格与其他产物"好的，xxx 已确认..."不一致）。
+      const replyText = proceedReplyText(step, effectiveNextStep, subPhase);
       await addMessage(requirementId, "assistant", replyText);
       // 置为待确认（若后续因竞态未自动推进，仍保留开门状态）
       await setAwaitingConfirm(requirementId, step, true).catch(() => {});

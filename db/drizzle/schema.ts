@@ -145,6 +145,8 @@ export const requirementSteps = pgTable(
     state: text("state").notNull().default("not_started"),
     /** 确认闸门：1 = 待用户手动确认进入下一阶段 */
     awaitingConfirm: smallint("awaiting_confirm").notNull().default(0),
+    /** 生成中标记：1 = 该步骤产物正在生成（跨页面/会话持久化，退出页面后仍可恢复） */
+    generating: smallint("generating").notNull().default(0),
     note: text("note"),
     outputVersion: integer("output_version"),
     completedAt: ts("completed_at"),

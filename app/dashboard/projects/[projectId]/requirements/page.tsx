@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import useSWR, { useSWRConfig } from "swr";
 import { relativeTime, requirementStatusMeta } from "@/lib/display";
 import type { Requirement, RequirementStatus } from "@/types";
 import { PageContainer, PageHeader } from "@/components/layout/page";
+import { Loader2 } from "lucide-react";
 
 export default function ProjectRequirementsPage() {
   const router = useRouter();
@@ -20,6 +21,19 @@ export default function ProjectRequirementsPage() {
     (url: string) =>
       fetch(url).then((r) => r.json()).then((d) => (d.ok ? d.data : []))
   );
+
+  // 轮询列表：挂载即启动低频轮询，检测到「生成中」时缩短间隔以更快反映状态翻转。
+  // 关键：不能依赖首次快照是否有 generatingStep 来决定是否轮询 —— 首次数据可能是旧快照
+  // （SWR 不自动刷新），若此时 anyGenerating=false 就 return，轮询将永远无法启动，
+  // 后端 generating=true 的状态永远反映不到列表（即"生成中"动效缺失的根因）。
+  const anyGenerating = requirements.some((r) => !!r.generatingStep);
+  useEffect(() => {
+    const interval = anyGenerating ? 2000 : 5000;
+    const id = setInterval(() => {
+      globalMutate(`/api/requirements?projectId=${projectId}`);
+    }, interval);
+    return () => clearInterval(id);
+  }, [anyGenerating, projectId, globalMutate]);
 
   async function handleCreate() {
     if (creating) return;
@@ -74,12 +88,20 @@ export default function ProjectRequirementsPage() {
                 {r.card?.background || "暂无描述"}
               </p>
               <div className="mt-auto flex items-center justify-between pt-3">
-                <span
-                  className="inline-block rounded-[7px] px-[11.25px] py-[4.5px] text-[11px] font-medium"
-                  style={{ backgroundColor: meta.bg, color: meta.text }}
-                >
-                  {meta.label}
-                </span>
+                <div className="flex items-center gap-[6px]">
+                  <span
+                    className="inline-block rounded-[7px] px-[11.25px] py-[4.5px] text-[11px] font-medium"
+                    style={{ backgroundColor: meta.bg, color: meta.text }}
+                  >
+                    {meta.label}
+                  </span>
+                  {r.generatingStep && (
+                    <span className="flex items-center gap-1 rounded-[7px] bg-[#f666121a] px-[9px] py-[4.5px] text-[11px] font-medium text-brand">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      生成中
+                    </span>
+                  )}
+                </div>
                 <span className="text-[12px] text-[#78746C]">
                   {relativeTime(r.updatedAt)}
                 </span>

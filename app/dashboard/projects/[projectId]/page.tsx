@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import useSWR, { useSWRConfig } from "swr";
@@ -14,7 +14,7 @@ import type { ProjectStats } from "@/lib/services/projects";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { SearchInput } from "@/components/ui/search-input";
-import { MoreHorizontal, Trash2 } from "lucide-react";
+import { MoreHorizontal, Trash2, Loader2 } from "lucide-react";
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
@@ -136,10 +136,23 @@ export default function ProjectRequirementsPage() {
     `/api/projects/${projectId}/stats`,
     fetcher
   );
-  const { data: requirements = [], isLoading: reqLoading } = useSWR<Requirement[]>(
+  const { data: requirements = [], isLoading: reqLoading, mutate: mutateRequirements } = useSWR<Requirement[]>(
     `/api/requirements?projectId=${projectId}`,
     listFetcher
   );
+
+  // 轮询列表：挂载即启动低频轮询，检测到「生成中」时缩短间隔以更快反映状态翻转。
+  // 关键：不能依赖首次快照是否有 generatingStep 来决定是否轮询 —— 首次数据可能是旧快照
+  // （SWR 不自动刷新），若此时 anyGenerating=false 就 return，轮询将永远无法启动，
+  // 后端 generating=true 的状态永远反映不到列表（即"生成中"动效缺失的根因）。
+  const anyGenerating = requirements.some((r) => !!r.generatingStep);
+  useEffect(() => {
+    const interval = anyGenerating ? 2000 : 5000;
+    const id = setInterval(() => {
+      mutateRequirements();
+    }, interval);
+    return () => clearInterval(id);
+  }, [anyGenerating, mutateRequirements]);
   // 需求真正为空（排除加载态）时，隐藏统计/筛选/列表，只显示新手引导
   const showEmpty = !reqLoading && requirements.length === 0;
 
@@ -265,6 +278,12 @@ export default function ProjectRequirementsPage() {
                   >
                     {meta.label}
                   </span>
+                  {r.generatingStep && (
+                    <span className="flex shrink-0 items-center gap-1 rounded-[7px] bg-[#f666121a] px-[9px] py-[3px] text-[11px] font-medium text-brand">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      生成中
+                    </span>
+                  )}
                   {r.priority === "high" && (
                     <span className="shrink-0 rounded-[7px] bg-[rgba(255,100,103,0.10)] px-[9px] py-[3px] text-[11px] font-medium text-[#FF6467]">
                       高优
