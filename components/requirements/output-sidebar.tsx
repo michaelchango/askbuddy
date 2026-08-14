@@ -125,12 +125,20 @@ export function OutputSidebar({
                   <div className="ml-5 flex flex-col gap-0.5 border-l border-[#1111110d] pl-3">
                     {(o.subOutputs ?? []).map((sub) => {
                       // 子产物「生成中」：design 组下 solution（方案文档）或 prototype（原型）
+                      const isPrototypeSubPhase = generatingSubType === "prototype";
                       const subGenerating =
                         groupGenerating &&
                         (sub.subType === "prototype"
-                          ? generatingSubType === "prototype"
-                          : generatingSubType !== "prototype");
-                      const disabled = !sub.exists && !subGenerating;
+                          ? isPrototypeSubPhase
+                          : !isPrototypeSubPhase);
+                      // 生成完成后仍停留在该子阶段（如 prototype 已完成等待确认进 PRD）时，
+                      // 该子产物应继续可点击/高亮，不应因 outputs.exists 尚未刷新而被 disabled。
+                      const subActiveInPhase =
+                        !groupGenerating &&
+                        (sub.subType === "prototype"
+                          ? isPrototypeSubPhase
+                          : !isPrototypeSubPhase);
+                      const disabled = !sub.exists && !subGenerating && !subActiveInPhase;
                       const subActive =
                         selected?.type === o.type && selected?.subType === sub.subType;
                       return (

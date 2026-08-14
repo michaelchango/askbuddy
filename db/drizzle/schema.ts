@@ -147,6 +147,8 @@ export const requirementSteps = pgTable(
     awaitingConfirm: smallint("awaiting_confirm").notNull().default(0),
     /** 生成中标记：1 = 该步骤产物正在生成（跨页面/会话持久化，退出页面后仍可恢复） */
     generating: smallint("generating").notNull().default(0),
+    /** design 步骤生成中的子阶段：'prototype' = 交互原型生成中，NULL = 方案文档生成中（与 generating 同生命周期） */
+    designSubPhase: text("design_sub_phase"),
     note: text("note"),
     outputVersion: integer("output_version"),
     completedAt: ts("completed_at"),

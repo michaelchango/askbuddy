@@ -15,8 +15,8 @@ for (const line of envContent.split("\n")) {
   }
 }
 
-const { db } = require("../lib/db");
-const { validateMermaidBlocks } = require("../lib/ai/parse");
+const { db } = require("../lib/db") as typeof import("../lib/db");
+const { validateMermaidBlocks } = require("../lib/ai/parse") as typeof import("../lib/ai/parse");
 
 const REQ_ID = process.argv[2] || "9c614f75-24d1-4c8e-b390-cdd6b1d1e014";
 

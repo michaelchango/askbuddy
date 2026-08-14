@@ -36,6 +36,8 @@ export interface RequirementStep {
   outputVersion?: number;
   awaitingConfirm?: boolean;        // 确认闸门：true 表示已生成/达标、等待用户手动确认进入下一阶段
   generating?: boolean;             // 生成中标记：true 表示该步骤产物正在生成（跨页面/会话持久化）
+  /** design 步骤生成中的子阶段：'prototype' = 交互原型生成中，null/undefined = 方案文档生成中（与 generating 同生命周期持久化） */
+  designSubPhase?: "prototype" | null;
   completedAt?: string;
   updatedAt: string;
 }

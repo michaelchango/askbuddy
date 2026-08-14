@@ -207,9 +207,12 @@ export function RequirementShell({
     const interval = stepsPollingEnabled ? 2000 : 5000;
     const id = setInterval(() => {
       refreshSteps();
+      // 生成中持续轮询 outputs，避免「生成完成瞬间」被 prevPersistedGenRef 重置错过，
+      // 导致重新挂载后 outputs 停在旧快照、查看器/侧栏永久显示「生成中」。
+      if (stepsPollingEnabled) refreshOutputs();
     }, interval);
     return () => clearInterval(id);
-  }, [stepsPollingEnabled, refreshSteps]);
+  }, [stepsPollingEnabled, refreshSteps, refreshOutputs]);
 
   // 生成中步骤发生变化（开始或结束）时，同步刷新 outputs 与对话，
   // 让左侧栏可点击态、查看器成果、对话 AI 回复在生成完成后自动更新。
@@ -235,7 +238,32 @@ export function RequirementShell({
     setPendingPrompt(null);
     setChangeTasks([]);
     setDesignSubPhase(null);
-  }, [requirementId]);
+    // 重新挂载/切换需求后，立即拉取最新 steps 与 outputs，
+    // 避免「上一次生成已完成、但 prevPersistedGenRef 已随卸载重置」
+    // 导致重新进入详情页时 outputs 停在旧快照、查看器/侧栏永久显示「生成中」。
+    refreshSteps();
+    refreshOutputs();
+  }, [requirementId, refreshSteps, refreshOutputs]);
+
+  // 从持久化步骤派生「design 步骤当前子阶段」。
+  // 重进页面时内存态 designSubPhase 已被重置为 null，需从此处恢复。
+  // 注意：不能只看 generating，原型生成完成后 generating=false 但 design_sub_phase 仍应为
+  // 'prototype'（prototype-sse 已保留），否则左侧栏「交互原型」菜单与 pendingPrompt 文案
+  // 会在用户切走再回后错误地回到「方案文档」阶段。
+  const persistedDesignSubPhase = useMemo<"prototype" | null>(() => {
+    const design = steps.find((s) => s.step === "design");
+    return design?.designSubPhase === "prototype" ? "prototype" : null;
+  }, [steps]);
+
+  // 生效中的设计子阶段：内存态优先（实时生成路径），持久化兜底（跨会话恢复）。
+  const effectiveDesignSubPhase = designSubPhase ?? persistedDesignSubPhase;
+
+  // 从持久化步骤恢复设计子阶段到内存态：仅当内存态为 null（重进页面）且后端明确
+  // 标记 design 步骤正在生成原型时同步，避免覆盖实时生成路径的内存态。
+  useEffect(() => {
+    if (designSubPhase !== null) return;
+    if (persistedDesignSubPhase === "prototype") setDesignSubPhase("prototype");
+  }, [persistedDesignSubPhase, designSubPhase]);
 
   // 进入需求后默认展开右侧栏：按设计流程「从下到上」的逆序优先打开已存在的生成物
   // （需求文档 → 交互原型 → 方案文档 → 调研报告 → 需求卡片），即打开最后生成的文档，
@@ -264,11 +292,18 @@ export function RequirementShell({
       if (!meta) return false;
       if (item.subType) {
         const sub = meta.subOutputs?.find((s) => s.subType === item.subType);
-        const subGenerating =
-          genStep === "design" &&
-          ((item.subType === "prototype" && designSubPhase === "prototype") ||
-            (item.subType === "solution" && designSubPhase !== "prototype"));
-        return !!sub && (sub.exists || subGenerating);
+        // design 步骤拆成 solution/prototype 两个子产物。判断当前处于哪个子阶段：
+        // 1) 生成中：generatingStep/designSubPhase 已标识为 prototype/solution；
+        // 2) 生成完成/等待确认：effectiveDesignSubPhase 仍保留为 prototype（prototype-sse
+        //    完成后不会清为 null），此时该子产物应继续可点击/高亮，避免用户切走再回后
+        //    默认选回 solution 文档。
+        const inDesignSubPhase =
+          genStep === "design" || effectiveDesignSubPhase === "prototype";
+        const subActive =
+          inDesignSubPhase &&
+          ((item.subType === "prototype" && effectiveDesignSubPhase === "prototype") ||
+            (item.subType === "solution" && effectiveDesignSubPhase !== "prototype"));
+        return !!sub && (sub.exists || subActive);
       }
       // 顶层项：存在 或 该输出物对应步骤正在生成
       const stepOf = STEP_TO_OUTPUT[genStep as StepName];
@@ -282,7 +317,7 @@ export function RequirementShell({
     } else {
       setSelected({ type: "card" });
     }
-  }, [outputs, selected, generatingStep, persistedGeneratingStep, designSubPhase]);
+  }, [outputs, selected, generatingStep, persistedGeneratingStep, effectiveDesignSubPhase]);
 
   // ===== 生成编排核心 =====
 
@@ -383,12 +418,15 @@ export function RequirementShell({
                 });
               } catch { /* ignore */ }
             } else if (eventType === "gen_message") {
-              // 后端合成消息（已落库）：转发给对话面板实时追加
+              // 后端合成消息（已落库）：
+              // 1) 派事件给对话面板即时追加；
+              // 2) 同时刷新 conversation SWR 做兜底，避免 rid/双 mount 时序导致事件静默丢失。
               try {
                 const data = JSON.parse(raw) as { content: string };
                 window.dispatchEvent(
                   new CustomEvent(EVT.GEN_MESSAGE, { detail: { content: data.content, requirementId } })
                 );
+                globalMutate(`/api/requirements/${requirementId}/conversation`);
               } catch { /* ignore */ }
             } else if (eventType === "error") {
               // 后端生成流水线异常（如 EMAXCONNSESSION）：中断 SSE 读取，抛错给外层 catch
@@ -699,6 +737,13 @@ export function RequirementShell({
               state: "in_progress",
               awaitingConfirm: false,
               outputVersion: version,
+              // 进入原型子阶段：持久化子阶段标识，重进页面后可恢复「原型生成中」而非误判为方案文档
+              designSubPhase: "prototype",
+              // 同时把 generating=true 持久化：用户点击按钮后立即退出到项目页，
+              // 列表页 derivedStatus 与详情页 persistedDesignSubPhase 都能立刻看到「原型生成中」，
+              // 弥补「等待 prototype-sse 起流」这段几百毫秒的空窗。
+              // 后续 prototype-sse 的 setStepGenerating(rid, "design", true, "prototype") 是幂等兜底。
+              generating: true,
             }),
           });
           await refreshSteps();
@@ -745,17 +790,55 @@ export function RequirementShell({
     if (step === "design") setDesignSubPhase(null);
     // 与对话路径一致：进入下一阶段时在对话里给一句推进反馈（自动推进已由后端落库，跳过）
     void emitProceedTip(step, nextStep, subPhase);
-    // 先置当前节点【已完成】并清除确认闸门
+    // 先置当前节点【已完成】并清除确认闸门；同时把下一节点置【进行中 + 生成中】，
+    // 真正把"等待 SSE 起流"这段空窗吸进持久化层 —— 用户点击后立即退出到项目页，
+    // 列表页 derivedStatus(r.generatingStep) 与详情页 persistedGeneratingStep 都能立刻反映「生成中」，
+    // 不再出现「方案文档已完成，等跑完之后突然变生成中」的撕裂感。
+    // 后端 SSE / prototype-sse 自身的 setStepGenerating 调用仍是幂等兜底。
     try {
-      await fetch(`/api/requirements/${requirementId}/steps`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          step,
-          state: "done",
+      const doneBody = JSON.stringify({
+        step,
+        state: "done",
+        awaitingConfirm: false,
+        outputVersion: version,
+        // 推进离开 design 步骤时清空子阶段标识（回到方案文档阶段语义）
+        designSubPhase: step === "design" ? null : undefined,
+      });
+      const nextBody =
+        nextStep &&
+        JSON.stringify({
+          step: nextStep,
+          state: "in_progress",
           awaitingConfirm: false,
-          outputVersion: version,
+          // 注意：此处【不】预置 generating:true。
+          // 旧实现会在「等待 SSE 真正起流」的空窗里先持久化 generating=true，但后端
+          // /design POST 只有在 getSession 之后才 setStepGenerating(design, true, null)，
+          // 二者之间存在时间窗。若用户在此期间切走页面导致浏览器取消 POST 请求
+          // （连接尚未建立 / 服务端尚未执行 setStepGenerating），则 design.generating
+          // 会永久卡在 pre-PATCH 写入的 true，而没有任何后端任务会把它清 0 —— 表现为
+          // 「生成中切走再回 → 右侧栏永久 AI 正在生成」。
+          // 改为：generating 完全由后端 SSE 的 setStepGenerating(true/false) 负责，
+          // POST 不阻塞（streamAI 立即返回），setStepGenerating 在 getSession 后即刻执行，
+          // 因此「切走后项目页显示生成中」的体验基本无损，但彻底消除了孤立 generating=true。
+        });
+      const patches: Promise<unknown>[] = [
+        fetch(`/api/requirements/${requirementId}/steps`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: doneBody,
         }),
+      ];
+      if (nextBody) {
+        patches.push(
+          fetch(`/api/requirements/${requirementId}/steps`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: nextBody,
+          })
+        );
+      }
+      await Promise.all(patches).catch(() => {
+        /* ignore — 任一 PATCH 失败不阻塞后续 generate，外层 try/catch 覆盖错误路径 */
       });
       await refreshSteps();
     } catch {
@@ -897,6 +980,7 @@ export function RequirementShell({
                 window.dispatchEvent(
                   new CustomEvent(EVT.GEN_MESSAGE, { detail: { content: data.content, requirementId } })
                 );
+                globalMutate(`/api/requirements/${requirementId}/conversation`);
               } catch {
                 /* ignore */
               }
@@ -950,12 +1034,25 @@ export function RequirementShell({
   // 将原型生成函数挂到 ref，供 handleProceed 在运行时调用（规避 TDZ）
   generatePrototypeRef.current = generatePrototype;
 
-  // 组件卸载（如切走需求页）时【不再中止】后台生成流：让后端继续跑完并落库。
-  // 生成中状态已持久化到 requirement_steps.generating，切走/重进后由 steps 轮询恢复。
-  // genAbortRef 仍保留：仅用于用户主动取消的场景（若未来需要），卸载时不 abort。
-
-  // 通知功能诊断：页面挂载时输出权限状态 / 安全上下文 / 来源
+  // 组件卸载（如切走需求页 / 切到项目页）时【不】主动 abort 当前生成请求。
+  //
+  // 服务端 SSE 流由 runGeneration 在进程内独立产出，客户端连接断开并不影响其自身
+  // reader.read() 继续读取与 finally 清 0（已在 design/route.ts、prototype-sse.ts 验证）。
+  // 因此「卸载时 abort」不仅无助于服务端清 0，反而会：
+  //   1. 让前端 fetch 的 reader.read() 抛 AbortError，handleGenerate 走 catch→throw→
+  //      handleProceed 直接 return，丢失「生成完成」事件；
+  //   2. 重进详情页是全新 mount，不再触发生成，完全依赖 SWR 轮询 /steps。若轮询在
+  //      生成完成的瞬间未命中 done 态，UI 就会永久停在「AI 正在生成…」。
+  //
+  // 不 abort 时：前端 handleGenerate 的 while 循环会一直读到服务端 done，并在第 439 行
+  // 主动拉最新 steps/outputs 注入 SWR；即便切走后组件卸载，服务端仍会跑完 finally 清 0，
+  // 重进页面时 SWR 直接拉到已完成态。服务端侧另有 5 分钟超时保险作为兜底。
+  //
+  // 注：genAbortRef 仍保留供 handleGenerate 自身在异常时使用，但卸载清理不再调用 abort。
   useEffect(() => {
+    return () => {
+      // 故意不调用 genAbortRef.current?.abort()：避免打断服务端独立生成流。
+    };
   }, []);
 
   // 监听对话面板的 proceed_prompt 事件（AI 提示进入下一步）
@@ -1029,28 +1126,33 @@ export function RequirementShell({
     // 原型确认后再进入 prd_writing（normal 模式的 subPhase 为空）。
     // 恢复时必须把这个 subPhase 也带上，否则点按钮会被 handleProceed 当作普通
     // PATCH done 路径处理，跳过原型直接推进到 PRD。
-    // 区分依据：design 阶段 awaiting=true 时，若原型还未生成，则期望进原型；
-    // 若原型已生成（outputs.subOutputs 里 prototype 子产物 exists=true），则
-    // 期望进 PRD（即 normal 流程走完两步的"待进 PRD" 闸门）。
+    // 区分依据：优先用持久化的 designSubPhase 字段判断当前处于哪个子阶段；
+    // 若旧数据无该字段，则 fallback 到 outputs 中 prototype 子产物是否存在。
+    const designStep = steps.find((s) => s.step === "design");
     const designMeta = outputs.find((o) => o.type === "design");
     const prototypeMeta = designMeta?.subOutputs?.find((s) => s.subType === "prototype");
-    const isDesignAwaitingPrototype =
-      awaiting.step === "design" && !prototypeMeta?.exists;
-    const nextStep = isDesignAwaitingPrototype
+    const isAwaitingEnterPrototype =
+      awaiting.step === "design" &&
+      (designStep?.designSubPhase
+        ? designStep.designSubPhase !== "prototype"
+        : !prototypeMeta?.exists);
+    const nextStep = isAwaitingEnterPrototype
       ? null
       : nextStepOf(awaiting.step);
     const subPhase =
-      awaiting.step === "design" && isDesignAwaitingPrototype
+      awaiting.step === "design" && isAwaitingEnterPrototype
         ? "prototype"
         : undefined;
     const message =
       awaiting.step === "dialoguing"
         ? "需求确认已完成，请确认后进入下一阶段。"
         : awaiting.step === "design"
-          ? subPhase === "prototype"
-            ? "方案文档已生成，请在下方确认后进入原型设计。"
-            : `${STEP_LABELS[awaiting.step] ?? ""}已生成，请确认后进入下一阶段。`
-          : `${STEP_LABELS[awaiting.step] ?? ""}已生成，请确认后进入下一阶段。`;
+          ? isAwaitingEnterPrototype
+            ? "方案文档已生成，请确认后进入原型设计。"
+            : "原型已生成，请确认后进入下一阶段。"
+          : awaiting.step === "prd_writing"
+            ? "需求文档已生成，请确认后完成定版。"
+            : `${STEP_LABELS[awaiting.step] ?? ""}已生成，请确认后进入下一阶段。`;
     setPendingPrompt({
       step: awaiting.step,
       nextStep,
@@ -1082,7 +1184,7 @@ export function RequirementShell({
     onProceed: handleProceed,
     onReturnToModify: handleReturnToModify,
     changeTasks,
-    designSubPhase,
+    designSubPhase: effectiveDesignSubPhase,
   };
 
   const dragging = useRef(false);
@@ -1218,9 +1320,9 @@ export function RequirementShell({
               onSelect={handleSelect}
               generatingStep={persistedGeneratingStep ?? generatingStep}
               generatingSubType={
-                persistedGeneratingStep === "design" || generatingStep === "design"
-                  ? designSubPhase
-                  : null
+                // 只要当前处于 design 步骤的 prototype 子阶段（生成中或生成完成等待确认），
+                // 左侧栏都应把「交互原型」子产物视为可点击/高亮，而不是 disabled。
+                effectiveDesignSubPhase === "prototype" ? "prototype" : null
               }
             />
 

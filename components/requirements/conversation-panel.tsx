@@ -788,13 +788,16 @@ export function ConversationPanel({
             />
           )}
           {/* 阶段完成确认条：平时隐藏，后端判定可进入下一阶段时显示在输入框上方 */}
-          {workflow?.pendingPrompt && (
+          {workflow?.pendingPrompt && (() => {
+            // 是否为最后阶段（需求文档）：nextStep 为 null 时表示无下一阶段，按钮文案与提示切换为「完成定版」
+            const isFinal = !workflow.pendingPrompt.nextStep;
+            return (
             <div className="flex h-[56px] items-center justify-between gap-3 rounded-t-2xl border-b border-[#1111111a] bg-[#F2F0EB] px-4">
               <div className="flex min-w-0 items-center gap-2">
                 <CheckCircle2 className="h-[18px] w-[18px] shrink-0 text-[#16a34a]" />
                 <span className="truncate text-[13.5px] font-semibold text-[#1C1917]">
                   {workflow.pendingPrompt.message ||
-                    `${STEP_COMPLETE_LABEL[workflow.pendingPrompt.step] ?? "当前阶段已完成"}，可以进入下一阶段`}
+                    `${STEP_COMPLETE_LABEL[workflow.pendingPrompt.step] ?? "当前阶段已完成"}${isFinal ? "，可以确认完成定版" : "，可以进入下一阶段"}`}
                 </span>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -808,12 +811,13 @@ export function ConversationPanel({
                   onClick={() => workflow.onProceed()}
                   className="flex items-center gap-1.5 rounded-[9px] bg-[#f66612] px-3.5 py-2 text-[13.5px] font-semibold text-white hover:bg-[#e85d0a]"
                 >
-                  进入下一阶段
-                  <ArrowRight className="h-4 w-4" />
+                  {isFinal ? "完成定版" : "进入下一阶段"}
+                  {!isFinal && <ArrowRight className="h-4 w-4" />}
                 </button>
               </div>
             </div>
-          )}
+            );
+          })()}
           <textarea
             ref={taRef}
             rows={1}

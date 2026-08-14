@@ -1,0 +1,12 @@
+修复方案文档/原型生成中途切走再回详情页卡死或状态错乱
+
+- 根因：handleProceed 对 design 的 pre-PATCH 制造孤立 generating 状态；
+  原型生成完成后误将 design_sub_phase 清为 null，导致重进页面无法识别子阶段；
+  cloudbase 后端表缺 design_sub_phase 列导致 design PATCH 500。
+- design/route.ts、prototype-sse.ts：5 分钟超时保险；先清 generating 再推 step_update；
+  原型完成后保留 design_sub_phase='prototype'。
+- requirement-shell.tsx、output-sidebar.tsx、conversation-panel.tsx：重进页面正确
+  恢复 design 子阶段（方案文档/原型），左侧栏与按钮文案同步；按钮文案去除"下方"，
+  需求文档（最后阶段）改用"完成定版"不再提示"下一阶段"。
+- 新增 db-migrate-cloudbase.ts（启动前幂等同步真实库结构）并接入 start_dev.bat；
+  新增 fix-design-subphase.ts、fix-prototype-phase.ts、diag-stuck-generating.ts 修复/诊断脚本。

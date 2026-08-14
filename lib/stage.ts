@@ -19,6 +19,7 @@ import type {
   Requirement,
   RequirementStep,
   StepCompletion,
+  StepName,
   StepState,
 } from "@/types";
 

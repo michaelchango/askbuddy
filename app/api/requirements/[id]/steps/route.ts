@@ -23,7 +23,7 @@ export async function PATCH(
   const user = await getSession();
   if (!user) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const body = await req.json();
-  const { step, state, note, outputVersion, awaitingConfirm } = body;
+  const { step, state, note, outputVersion, awaitingConfirm, designSubPhase, generating } = body;
   if (!step || !state) {
     return NextResponse.json({ ok: false, error: "step and state required" }, { status: 400 });
   }
@@ -32,6 +32,12 @@ export async function PATCH(
     outputVersion,
     awaitingConfirm:
       typeof awaitingConfirm === "boolean" ? awaitingConfirm : undefined,
+    generating:
+      typeof generating === "boolean" ? generating : undefined,
+    designSubPhase:
+      designSubPhase === "prototype" || designSubPhase === null
+        ? designSubPhase
+        : undefined,
   });
   return NextResponse.json({ ok: true });
 }

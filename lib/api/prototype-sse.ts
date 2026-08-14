@@ -14,11 +14,15 @@ export async function prototypeSSE(
 ): Promise<Response> {
   const isEdit = !!(opts.baseVersionId || opts.changeNote);
   const taskType = isEdit ? "prototype_edit" : "prototype_gen";
-  // 原型属于 design 组的子产物，复用 design 步骤的「生成中」标记（跨页面/会话持久化）
-  await setStepGenerating(requirementId, "design", true).catch(() => {});
+  // 原型属于 design 组的子产物，复用 design 步骤的「生成中」标记（跨页面/会话持久化），
+  // 并同时写入子阶段标识 design_sub_phase='prototype'，供重进页面时区分「方案文档/原型」生成中
+  await setStepGenerating(requirementId, "design", true, "prototype").catch(() => {});
   const stream = await streamPrototype(requirementId, opts);
   const encoder = new TextEncoder();
   let full = "";
+
+  // 保险：无论成功/失败/断连/AI hang，最多 N 分钟后强制清 0，避免 dev/HMR/模型异常时永久卡死。
+  const GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
 
   const sse = new ReadableStream({
     async start(controller) {
@@ -26,7 +30,20 @@ export async function prototypeSSE(
       // 但生成任务仍应在后台继续跑完并落库，故引入「安全发送」：发送失败仅标记客户端已断开，
       // 不中断后台读取与 finalize，保证 generating 标记在真正完成后才置 false。
       let clientClosed = false;
-      const send = (event: string, data: unknown) => {
+      let timedOut = false;
+      const timeoutId = setTimeout(() => {
+        timedOut = true;
+        console.error(`[trace|prototype] 生成超时 (${GENERATION_TIMEOUT_MS}ms)，强制清 0: req=${requirementId}`);
+        send("error", { message: "生成超时，已自动终止" });
+        setStepGenerating(requirementId, "design", false, null).catch(() => {});
+        try {
+          controller.close();
+        } catch {
+          /* ignore */
+        }
+      }, GENERATION_TIMEOUT_MS);
+
+      function send(event: string, data: unknown) {
         if (clientClosed) return;
         try {
           controller.enqueue(
@@ -35,7 +52,7 @@ export async function prototypeSSE(
         } catch {
           clientClosed = true;
         }
-      };
+      }
 
       try {
         const reader = stream.getReader();
@@ -60,12 +77,6 @@ export async function prototypeSSE(
         // 生成（或更新）原型即视为需求的一次更新，刷新「最近更新」时间
         await touchRequirement(requirementId).catch(() => {});
 
-        const steps = await getSteps(requirementId).catch(() => null);
-        if (steps) {
-          send("step_update", steps);
-        }
-        send("gen_message", { content: genMessage });
-
         // 生成（或更新）原型直接落库：编辑模式基于 baseVersionId 出新版本
         const saved = await savePrototypeVersion(
           requirementId,
@@ -80,6 +91,23 @@ export async function prototypeSSE(
         // 区分了前沿 / 上游，此处原型需与之一致。
         if (!isEdit) {
           await setAwaitingConfirm(requirementId, "design", true).catch(() => {});
+        }
+
+        // 必须赶在 getSteps / step_update 之前把 generating 清 0，
+        // 否则前端收到的是一个「生成中」的快照，会被 globalMutate(..., false) 写死进 SWR 缓存，
+        // 导致详情页右侧栏与进度条永久显示「AI 正在生成…」。
+        // 注意：原型生成完成后仍处于 design 步骤的「原型子阶段」，保留 design_sub_phase='prototype'，
+        // 直到用户在 handleProceed 中确认进入 PRD 才清空。这样用户中途切走再回详情页时，
+        // persistedDesignSubPhase 与 pendingPrompt 恢复才能正确识别「原型已完成、等待确认进 PRD」。
+        await setStepGenerating(requirementId, "design", false, "prototype").catch(() => {});
+
+        const steps = await getSteps(requirementId).catch(() => null);
+        if (steps) {
+          send("step_update", steps);
+        }
+        send("gen_message", { content: genMessage });
+
+        if (!isEdit) {
           send("proceed_prompt", {
             step: "design",
             nextStep: nextStepOf("design"),
@@ -93,8 +121,13 @@ export async function prototypeSSE(
         const message = e instanceof Error ? e.message : String(e);
         send("error", { message });
       } finally {
-        // 兜底清除 design 步骤的「生成中」标记：成功/失败/断连都必须置 false
-        await setStepGenerating(requirementId, "design", false).catch(() => {});
+        clearTimeout(timeoutId);
+        // 兜底清除 design 步骤的「生成中」标记：成功/失败/断连/超时都必须置 false。
+        // 保留 design_sub_phase='prototype'：原型阶段一旦进入就保持该标识，直到用户在 handleProceed
+        // 中确认进入 PRD 才清空。这样即便客户端断连重连，也能识别当前处于「原型子阶段」。
+        if (!timedOut) {
+          await setStepGenerating(requirementId, "design", false, "prototype").catch(() => {});
+        }
         try {
           controller.close();
         } catch {

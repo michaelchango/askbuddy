@@ -67,6 +67,7 @@ export async function getSteps(requirementId: string): Promise<RequirementStep[]
     output_version?: number;
     awaiting_confirm?: number | boolean;
     generating?: number | boolean;
+    design_sub_phase?: string | null;
     completed_at?: string;
     updated_at: string;
   }>("requirement_steps", {
@@ -90,6 +91,8 @@ export async function getSteps(requirementId: string): Promise<RequirementStep[]
       outputVersion: r.output_version,
       awaitingConfirm: !!r.awaiting_confirm,
       generating: !!r.generating,
+      designSubPhase:
+        r.design_sub_phase === "prototype" ? ("prototype" as const) : null,
       completedAt: r.completed_at,
       updatedAt: r.updated_at,
     }))
@@ -108,6 +111,8 @@ export async function setStepState(
     outputVersion?: number;
     awaitingConfirm?: boolean;
     generating?: boolean;
+    /** design 步骤生成中的子阶段：'prototype' = 交互原型生成中；null = 方案文档生成中（仅显式传入时写列） */
+    designSubPhase?: "prototype" | null;
   }
 ): Promise<void> {
   const now = new Date().toISOString();
@@ -126,6 +131,10 @@ export async function setStepState(
   // 仅当显式传入时才覆盖 generating，避免误清除生成中标记
   if (options?.generating !== undefined) {
     patch.generating = options.generating ? 1 : 0;
+  }
+  // 仅当显式传入时才覆盖 design_sub_phase（含 null 显式清空），避免误清除子阶段标识
+  if (options?.designSubPhase !== undefined) {
+    patch.design_sub_phase = options.designSubPhase === "prototype" ? "prototype" : null;
   }
 
   // 只需要判断存在性，用 countMany 而不是把整行拉回来。
@@ -231,13 +240,18 @@ export async function setAwaitingConfirm(
 export async function setStepGenerating(
   requirementId: string,
   step: StepName,
-  generating: boolean
+  generating: boolean,
+  designSubPhase?: "prototype" | null
 ): Promise<void> {
-  await db.updateWhere(
-    "requirement_steps",
-    { requirement_id: requirementId, step },
-    { generating: generating ? 1 : 0, updated_at: new Date().toISOString() }
-  );
+  const patch: Record<string, unknown> = {
+    generating: generating ? 1 : 0,
+    updated_at: new Date().toISOString(),
+  };
+  // 仅当显式传入时才覆盖 design_sub_phase（含 null 显式清空），避免误清除子阶段标识
+  if (designSubPhase !== undefined) {
+    patch.design_sub_phase = designSubPhase === "prototype" ? "prototype" : null;
+  }
+  await db.updateWhere("requirement_steps", { requirement_id: requirementId, step }, patch);
   // 立即失效列表/详情缓存，让派生 status 与 generatingStep 尽早反映新值，
   // 而不是等待 5s TTL 自然过期（缩短列表页「生成中」角标的出现/消失延迟）。
   try {

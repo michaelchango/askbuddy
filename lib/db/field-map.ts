@@ -89,6 +89,7 @@ export const FIELD_MAP: Readonly<Record<string, Readonly<Record<string, string>>
     state: "state",
     awaiting_confirm: "awaiting_confirm",
     generating: "generating",
+    design_sub_phase: "design_sub_phase", // 'prototype'=原型生成中，NULL=方案文档生成中
     note: "note",
     output_version: "output_version",
     completed_at: "completed_at",
