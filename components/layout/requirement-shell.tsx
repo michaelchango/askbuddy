@@ -1249,41 +1249,43 @@ export function RequirementShell({
                         onClick={() => setBreadOpen(false)}
                         aria-hidden
                       />
-                      <div className="absolute left-0 top-[42px] z-50 w-[280px] overflow-hidden rounded-[12px] border border-[#1111111a] bg-white p-1 shadow-[0_12px_32px_rgba(0,0,0,0.14)]">
-                        {(siblings ?? []).map((s) => {
-                          const meta = requirementStatusMeta(
-                            (s.status as RequirementStatus) ?? "dialoguing"
-                          );
-                          return (
-                            <button
-                              key={s.id}
-                              type="button"
-                              onClick={() => {
-                                setBreadOpen(false);
-                                if (s.id !== requirementId)
-                                  router.push(`/dashboard/requirements/${s.id}`);
-                              }}
-                              className={cn(
-                                "flex w-full items-center justify-between gap-2 rounded-[6px] px-[14px] py-[9px] text-left text-[14px] transition-colors hover:bg-[#F2F0EB]",
-                                s.id === requirementId ? "font-semibold text-[#f66612]" : "text-[#111111]"
-                              )}
-                            >
-                              <span className="truncate">{s.title || "Untitled"}</span>
-                              <span
-                                className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
-                                style={{ backgroundColor: meta.bg, color: meta.text }}
+                      <div className="absolute left-0 top-[42px] z-50 w-[280px] overflow-hidden rounded-[12px] border border-[#1111111a] bg-white shadow-[0_12px_32px_rgba(0,0,0,0.14)]">
+                        <div className="max-h-[min(70vh,360px)] overflow-y-auto p-1">
+                          {(siblings ?? []).map((s) => {
+                            const meta = requirementStatusMeta(
+                              (s.status as RequirementStatus) ?? "dialoguing"
+                            );
+                            return (
+                              <button
+                                key={s.id}
+                                type="button"
+                                onClick={() => {
+                                  setBreadOpen(false);
+                                  if (s.id !== requirementId)
+                                    router.push(`/dashboard/requirements/${s.id}`);
+                                }}
+                                className={cn(
+                                  "flex w-full items-center justify-between gap-2 rounded-[6px] px-[14px] py-[9px] text-left text-[14px] transition-colors hover:bg-[#F2F0EB]",
+                                  s.id === requirementId ? "font-semibold text-[#f66612]" : "text-[#111111]"
+                                )}
                               >
-                                {meta.label}
-                              </span>
-                            </button>
-                          );
-                        })}
+                                <span className="truncate">{s.title || "Untitled"}</span>
+                                <span
+                                  className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                  style={{ backgroundColor: meta.bg, color: meta.text }}
+                                >
+                                  {meta.label}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
                         {projectId && (
-                          <div className="mt-1 border-t border-[#1111111a] pt-1">
+                          <div className="border-t border-[#1111111a]">
                             <Link
                               href={`/dashboard/projects/${projectId}`}
                               onClick={() => setBreadOpen(false)}
-                              className="flex w-full items-center justify-between gap-2 rounded-[6px] px-[14px] py-[9px] text-left text-[14px] font-medium text-[#78746C] transition-colors hover:bg-[#F2F0EB]"
+                              className="flex w-full items-center justify-between gap-2 rounded-b-[11px] px-[14px] py-[10px] text-left text-[14px] font-medium text-[#78746C] transition-colors hover:bg-[#F2F0EB]"
                             >
                               <span>管理所有需求</span>
                               <ChevronRight className="h-4 w-4 text-slate-400" />
