@@ -1,0 +1,22 @@
+
+> askbuddy@0.1.0 dev
+> next dev
+
+ ⚠ Port 3000 is in use, trying 3001 instead.
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3001
+  - Environments: .env.local
+
+ ✓ Starting...
+Error: [safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":50,"threshold":50,"scope":"turn","targets":["d:\\Workspace\\AskBuddy\\.next\\server\\vendor-chunks\\asynckit@0.4.0.js"],"targetCount":1}
+    at checkBulkDeleteGuard (D:\Program Files\CodeBuddy CN\resources\app\extensions\genie\out\vendor\shim\node-safe-delete-shim.cjs:273:19)
+    at tryTrash (D:\Program Files\CodeBuddy CN\resources\app\extensions\genie\out\vendor\shim\node-safe-delete-shim.cjs:602:5)
+    at Object.unlink (D:\Program Files\CodeBuddy CN\resources\app\extensions\genie\out\vendor\shim\node-safe-delete-shim.cjs:735:9)
+    at unlinkPath (D:\Workspace\AskBuddy\node_modules\.pnpm\next@14.2.35_react-dom@18.3.1_react@18.3.1__react@18.3.1\node_modules\next\dist\lib\recursive-delete.js:25:32)
+    at D:\Workspace\AskBuddy\node_modules\.pnpm\next@14.2.35_react-dom@18.3.1_react@18.3.1__react@18.3.1\node_modules\next\dist\lib\recursive-delete.js:70:20
+    at Array.map (<anonymous>)
+    at recursiveDelete (D:\Workspace\AskBuddy\node_modules\.pnpm\next@14.2.35_react-dom@18.3.1_react@18.3.1__react@18.3.1\node_modules\next\dist\lib\recursive-delete.js:51:30)
+    at async D:\Workspace\AskBuddy\node_modules\.pnpm\next@14.2.35_react-dom@18.3.1_react@18.3.1__react@18.3.1\node_modules\next\dist\lib\recursive-delete.js:68:17
+    at async Promise.all (index 15)
+    at async recursiveDelete (D:\Workspace\AskBuddy\node_modules\.pnpm\next@14.2.35_react-dom@18.3.1_react@18.3.1__react@18.3.1\node_modules\next\dist\lib\recursive-delete.js:51:5)
+[?25h

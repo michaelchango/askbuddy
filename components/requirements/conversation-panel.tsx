@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import useSWR, { mutate } from "swr";
 import { cn } from "@/lib/utils";
 import { EVT } from "@/lib/events";
-import { ArrowUp, Link2, Plus, User, X, Copy, Check, ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowUp, Link2, Plus, User, X, Copy, Check, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
 import { ReferencePanel, type PickedReference } from "./reference-panel";
 import MarkdownRenderer from "./markdown-renderer";
 import { useWorkflow } from "@/components/requirements/workflow-context";
@@ -492,15 +492,18 @@ export function ConversationPanel({
     return () => window.removeEventListener(EVT.PROCEED_TIP, handler);
   }, [rid]);
 
-  // 监听【返回修改】→ 在输入框填入默认修改文案并聚焦，供用户补充修改点
+  // 监听【返回修改】→ 在输入框填入默认修改文案、聚焦并把光标移到末尾，供用户补充修改点
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { defaultText: string };
-      setText(detail.defaultText ?? "");
-      // 延迟聚焦并重新计算高度，确保长文案填入后正确撑高
+      const defaultText = detail.defaultText ?? "";
+      setText(defaultText);
+      // 延迟聚焦并重新计算高度，确保长文案填入后正确撑高；并将光标定位到末尾
       setTimeout(() => {
         if (taRef.current) {
           taRef.current.focus();
+          const len = defaultText.length;
+          taRef.current.setSelectionRange(len, len);
           autoGrow(taRef.current);
         }
       }, 0);
@@ -787,10 +790,19 @@ export function ConversationPanel({
               }
             />
           )}
+          {/* 变更更新状态条：产物更新中显示在输入框上方（原位于顶部阶段模块）。
+              此时 pendingPrompt 已被置空，阶段完成确认条（下方）自动隐藏，避免误点。 */}
+          {workflow?.changeTasks && workflow.changeTasks.length > 0 && (
+            <div className="flex h-[56px] items-center gap-2 rounded-t-2xl border-b border-[#1111111a] bg-[#FEF3C7] px-4 text-[13.5px] font-semibold text-[#B45309]">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              正在自动更新 {workflow.changeTasks.length} 个输出物…
+            </div>
+          )}
           {/* 阶段完成确认条：平时隐藏，后端判定可进入下一阶段时显示在输入框上方 */}
           {workflow?.pendingPrompt && (() => {
-            // 是否为最后阶段（需求文档）：nextStep 为 null 时表示无下一阶段，按钮文案与提示切换为「完成定版」
-            const isFinal = !workflow.pendingPrompt.nextStep;
+            // 是否为最后阶段（需求文档）：只有需求文档完成后才显示「完成定版」
+            // 方案文档完成后的 nextStep 为 null 是因为要进入原型子阶段，不能误判为最后阶段
+            const isFinal = workflow.pendingPrompt.step === "prd_writing";
             return (
             <div className="flex h-[56px] items-center justify-between gap-3 rounded-t-2xl border-b border-[#1111111a] bg-[#F2F0EB] px-4">
               <div className="flex min-w-0 items-center gap-2">

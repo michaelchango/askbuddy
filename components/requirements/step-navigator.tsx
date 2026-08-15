@@ -132,13 +132,6 @@ export default function StepNavigator({
           );
         })}
 
-      {/* 变更更新任务队列 */}
-      {workflow?.changeTasks && workflow.changeTasks.length > 0 && (
-        <div className="ml-3 flex shrink-0 items-center gap-1.5 rounded-[9px] bg-[#FEF3C7] px-3 py-2 text-[13px] font-medium text-[#B45309]">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          正在自动更新 {workflow.changeTasks.length} 个输出物…
-        </div>
-      )}
       </div>
     </div>
   );

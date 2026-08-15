@@ -117,6 +117,16 @@ export function RequirementShell({
   const [devContextPending, setDevContextPending] = useState(false);
   const clearDevContextPending = useCallback(() => setDevContextPending(false), []);
   const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null);
+  // 变更更新前快照：进入变更更新队列时记录当时的 pendingPrompt（屏幕上显示的按钮），
+  // 待全部更新完成后原样恢复，避免变更期间 steps 变化触发 recoverPendingPrompt 把按钮
+  // 重建为「变更后」状态（表现为按钮文案/下一阶段变化，如「原型完成」变「方案文档完成」）。
+  const pendingPromptBeforeChangeRef = useRef<PendingPrompt | null>(null);
+  // 变更更新过程中最后一个任务下发的 proceed_prompt（优先级高于快照）：
+  // 若流程已被推进，应显示新阶段对应的确认闸门，而非恢复旧快照。
+  const lastProceedPromptRef = useRef<PendingPrompt | null>(null);
+  // 变更更新刚完成、已恢复 pendingPrompt 的标记：用于跳过一次兜底清空检查，
+  // 避免 steps 尚未同步时把刚恢复的按钮误清掉。
+  const changeJustFinishedRef = useRef(false);
   // 变更更新任务队列
   const [changeTasks, setChangeTasks] = useState<ChangeTask[]>([]);
   // 方案设计子阶段：null=方案文档，"prototype"=原型设计
@@ -408,14 +418,16 @@ export function RequirementShell({
                   nextStep: StepName | null;
                   version?: number;
                 };
-                setPendingPrompt({
+                const prompt = {
                   step: data.step,
                   nextStep: data.nextStep ?? null,
                   canSkip: !!data.canSkip,
                   message: data.message ?? "",
                   version: data.version,
                   subPhase: data.subPhase,
-                });
+                };
+                setPendingPrompt(prompt);
+                lastProceedPromptRef.current = prompt;
               } catch { /* ignore */ }
             } else if (eventType === "gen_message") {
               // 后端合成消息（已落库）：
@@ -545,7 +557,15 @@ export function RequirementShell({
       }));
       setChangeTasks(tasks);
 
+      // 快照变更前的 pendingPrompt（屏幕上显示的按钮），并在更新期间隐藏。
+      // 恢复逻辑在下方「全部完成」分支，避免 changeTasks 期间 steps 变化触发
+      // recoverPendingPrompt 把按钮重建为「变更后」状态（表现：按钮文案变化）。
+      pendingPromptBeforeChangeRef.current = pendingPrompt;
+      lastProceedPromptRef.current = null;
+      setPendingPrompt(null);
+
       // 串行执行（上游完成后再重生成下游）
+      let hasChangeError = false;
       for (let i = 0; i < queue.length; i++) {
         const item = queue[i];
         // 标记当前任务为生成中
@@ -593,6 +613,7 @@ export function RequirementShell({
             prev.map((t, idx) => (idx === i ? { ...t, status: "done" } : t))
           );
         } catch {
+          hasChangeError = true;
           setChangeTasks((prev) =>
             prev.map((t, idx) => (idx === i ? { ...t, status: "error" } : t))
           );
@@ -614,11 +635,20 @@ export function RequirementShell({
         }
       }
 
-      // 全部完成 → 延迟 1.5s 后清空队列，让用户体验到"全部完成"
-      setTimeout(() => setChangeTasks([]), 1500);
+      // 全部完成 → 延迟 1.5s 后清空队列并恢复按钮，让用户体验到"全部完成"
+      setTimeout(() => {
+        setChangeTasks([]);
+        // 恢复逻辑：优先使用本次更新最后一个任务下发的 proceed_prompt（流程已推进），
+        // 否则回退到变更前快照，确保按钮不会错误地"变化"或消失。
+        const restorePrompt = lastProceedPromptRef.current ?? pendingPromptBeforeChangeRef.current;
+        setPendingPrompt(restorePrompt);
+        lastProceedPromptRef.current = null;
+        pendingPromptBeforeChangeRef.current = null;
+        changeJustFinishedRef.current = true;
+      }, 1500);
 
       // 需求变更通知：整次变更作为整体，仅在所有输出物均成功完成后通知一次
-      const allDone = tasks.length > 0 && tasks.every((t) => t.status === "done");
+      const allDone = tasks.length > 0 && !hasChangeError;
       if (allDone) {
         notifyChangeComplete(req?.title ?? "", requirementId);
       }
@@ -644,7 +674,7 @@ export function RequirementShell({
         })
       );
     },
-    [handleGenerate, req, requirementId]
+    [handleGenerate, req, requirementId, pendingPrompt]
   );
 
   // 监听对话面板的 change_update 事件（AI 检测到变更点）
@@ -873,23 +903,13 @@ export function RequirementShell({
     }
   }, [pendingPrompt, handleGenerate, requirementId, refreshSteps]);
 
-  // 用户点击【返回修改】：在对话输入框填入默认修改文案
-  const RETURN_MODIFY_TEXT = useMemo<Record<StepName, string>>(
-    () => ({
-      dialoguing: "我需要补充/修改需求：\n",
-      research_analysis: "请帮我修改调研分析：\n",
-      design: "请帮我修改方案设计：\n",
-      prd_writing: "请帮我修改需求文档：\n",
-    }),
-    []
-  );
+  // 用户点击【返回修改】：在对话输入框填入默认修改文案（通用文案，不指明具体对象）
   const handleReturnToModify = useCallback(() => {
-    const step = pendingPrompt?.step;
-    const defaultText = step ? RETURN_MODIFY_TEXT[step] : "请帮我修改：\n";
+    const defaultText = "请帮我修改：\n";
     window.dispatchEvent(
       new CustomEvent(EVT.REQUEST_MODIFY, { detail: { defaultText } })
     );
-  }, [pendingPrompt, RETURN_MODIFY_TEXT]);
+  }, [pendingPrompt]);
 
   // 进入原型子阶段后自动根据方案设计生成可交互原型（复用与 handleGenerate 相同的 SSE 解析）
   // 参数 changeNote：变更模式下携带"该文档要改什么"，后端据此做精准修改而非盲重生成；
@@ -1117,6 +1137,7 @@ export function RequirementShell({
   // restordReqRef 在 awaiting 暂未到时被设置成 requirementId，后续 steps 拉到 awaiting=true
   // 也跳过恢复，导致方案文档生成后退页面再进入时按钮"消失"）。
   useEffect(() => {
+    if (changeTasks.length > 0) return; // 变更更新进行中：冻结，避免把按钮重建为「变更后」状态
     if (!steps || steps.length === 0) return; // 等待 steps 数据加载完成
     if (pendingPrompt) return; // 当前已有 pendingPrompt（实时事件已下发），无需重新恢复
     const awaiting = steps.find((s) => s.awaitingConfirm);
@@ -1167,6 +1188,12 @@ export function RequirementShell({
   // 强制清空 pendingPrompt，避免「输入框上方按钮残留」。
   // 注意：只看 awaitingConfirm，不能看 state —— 阶段进行中（in_progress）正是等待确认的常态。
   useEffect(() => {
+    if (changeTasks.length > 0) return; // 变更更新进行中：冻结，避免误清空变更前快照的按钮
+    if (changeJustFinishedRef.current) {
+      // 变更刚完成时 steps 可能尚未同步，跳过本次检查，避免把刚恢复的按钮误清掉
+      changeJustFinishedRef.current = false;
+      return;
+    }
     if (!pendingPrompt || !steps || steps.length === 0) return;
     const step = pendingPrompt.step;
     const row = steps.find((s) => s.step === step);
