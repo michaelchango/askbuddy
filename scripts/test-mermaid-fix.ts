@@ -1,5 +1,5 @@
 // 临时验证：单反引号围栏场景 + 裸引号场景
-import { validateMermaidBlocks } from "../lib/ai/parse";
+import { validateMermaidBlocks } from "../lib/utils/markdown";
 
 function show(title: string, bad: string) {
   console.log("=== " + title + " ===");

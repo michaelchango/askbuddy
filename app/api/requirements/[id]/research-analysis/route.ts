@@ -77,7 +77,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         const nextStep = nextStepOf("research_analysis");
         const genMessage =
           mode === "normal"
-            ? `✅ 调研分析已生成，请在下方确认后进入下一阶段。`
+            ? `✅ 调研分析已生成，请确认后进入下一阶段。`
             : `✅ 调研分析已更新。`;
 
         // 落库合成消息，确保退出重进会话后仍能回显
@@ -113,8 +113,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             canSkip: false,
             message:
               mode === "normal"
-                ? "调研报告已生成，请在下方确认后进入下一阶段。"
-                : "调研报告已更新，请在下方确认后进入下一阶段。",
+                ? "调研报告已生成，请确认后进入下一阶段。"
+                : "调研报告已更新，请确认后进入下一阶段。",
             version,
           });
         }

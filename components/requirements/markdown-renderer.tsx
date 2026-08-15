@@ -3,23 +3,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { normalizeMarkdown } from "@/lib/utils/markdown";
 
 // mermaid 体积较大且仅在渲染 ```mermaid 代码块时才需要，改为动态 import，
 // 避免被静态打进需求详情页的首屏客户端包，显著缩短首次进入的 JS 加载 / 解析时间。
 let mermaidPromise: Promise<typeof import("mermaid").default> | null = null;
-// 防御性处理：去除 AI 可能在外围包裹的 markdown 代码围栏（```markdown / ```），
-// 避免整篇文档被渲染成一个黑色代码块。
-function unwrapMarkdownFence(content: string): string {
-  const trimmed = content.trim();
-  if (!trimmed.startsWith("```")) return content;
-  const firstLineEnd = trimmed.indexOf("\n");
-  if (firstLineEnd === -1) return content;
-  const lang = trimmed.slice(3, firstLineEnd).trim().toLowerCase();
-  if (lang !== "" && lang !== "markdown" && lang !== "md") return content;
-  const lastFence = trimmed.lastIndexOf("```");
-  if (lastFence <= firstLineEnd) return content;
-  return trimmed.slice(firstLineEnd + 1, lastFence).trim();
-}
+
 
 function ensureMermaid(): Promise<typeof import("mermaid").default> {
   if (!mermaidPromise) {
@@ -98,8 +87,8 @@ function MarkdownRendererInner({
   content: string;
   disableMermaid?: boolean;
 }) {
-  // 防御性去除外围 markdown 围栏，避免整篇文档被识别为代码块。
-  const cleanedContent = useMemo(() => unwrapMarkdownFence(content), [content]);
+  // 防御性规范化 AI 输出的 markdown，避免整篇文档被识别为代码块或标题无法渲染。
+  const cleanedContent = useMemo(() => normalizeMarkdown(content), [content]);
   // 提取 React 子节点中的纯文本（用于生成 h2 锚点，与后端章节切分逻辑保持一致）
   const nodeText = (node: React.ReactNode): string => {
     if (node == null) return "";

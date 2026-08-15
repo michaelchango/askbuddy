@@ -88,7 +88,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
                 // 生成完成后不再自动推进，当前节点保持【进行中】并等待用户确认。
         const genMessage =
           mode === "normal"
-            ? `✅ 方案文档已生成，请在下方确认后进入原型设计。`
+            ? `✅ 方案文档已生成，请确认后进入原型设计。`
             : `✅ 方案文档已更新。`;
 
         // 落库合成消息，确保退出重进会话后仍能回显
@@ -129,8 +129,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             canSkip: false,
             message:
               mode === "normal"
-                ? "方案文档已生成，请在下方确认后进入原型设计。"
-                : "方案文档已更新，请在下方确认后进入原型设计。",
+                ? "方案文档已生成，请确认后进入原型设计。"
+                : "方案文档已更新，请确认后进入原型设计。",
             version,
           });
         }

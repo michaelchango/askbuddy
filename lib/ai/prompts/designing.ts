@@ -13,7 +13,7 @@ export const solutionWritingPrompt: PromptModule = {
    
    ## 2. 核心流程
    - 描述用户的核心操作流程（可用文字描述 + Mermaid 流程图）。
-   - 若使用 Mermaid 流程图，必须放在 \`\`\`mermaid 代码块围栏内（连续三个反引号 + 关键字 mermaid），禁止裸写 flowchart / graph 等图语法。示例：
+   - 若使用 Mermaid 流程图，必须放在 \`\`\`mermaid 代码块围栏内（连续三个反引号 + 关键字 mermaid 开头，并以独占一行的三个反引号结尾），禁止裸写 flowchart / graph 等图语法，禁止遗漏结尾的闭合反引号。示例：
 \`\`\`mermaid
 flowchart TD
     A[打开网页] --> B{选择模式}

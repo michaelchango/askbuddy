@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import useSWR, { mutate } from "swr";
 import { cn } from "@/lib/utils";
-import { EVT } from "@/lib/events";
+import { EVT, pendingGenMessages } from "@/lib/events";
 import { ArrowUp, Link2, Plus, User, X, Copy, Check, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
 import { ReferencePanel, type PickedReference } from "./reference-panel";
 import MarkdownRenderer from "./markdown-renderer";
@@ -79,6 +79,30 @@ export function ConversationPanel({
     (u: string) => fetch(u).then((r) => r.json()).then((j) => j.data),
     { revalidateOnFocus: false, revalidateOnReconnect: false }
   );
+
+  // 兜底 flush：若 requirement-shell 派发 GEN_MESSAGE 时本组件尚未 ready，
+  // 事件会丢失。rid 就绪后从 pendingGenMessages 取出未处理的话术追加到对话。
+  useEffect(() => {
+    if (!rid) return;
+    const pending = pendingGenMessages.get(rid);
+    if (!pending || pending.length === 0) return;
+    pendingGenMessages.delete(rid);
+    setMessages((prev) => {
+      const known = new Set(prev.map((m) => `${m.role}:${m.content}`));
+      const additions: Msg[] = [];
+      for (const content of pending) {
+        if (known.has(`assistant:${content}`)) continue;
+        known.add(`assistant:${content}`);
+        additions.push({
+          id: nextMsgId(),
+          role: "assistant",
+          content,
+          created_at: new Date().toISOString(),
+        });
+      }
+      return additions.length ? [...prev, ...additions] : prev;
+    });
+  }, [rid]);
 
   // 已生成输出物（供引用面板使用）。与 requirement-shell 共享 SWR 缓存，不额外轮询。
   const { data: outputs } = useSWR<OutputMeta[]>(

@@ -119,8 +119,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             canSkip: false,
             message:
               mode === "normal"
-                ? "需求文档已生成，请在下方确认。"
-                : "需求文档已更新，请在下方确认。",
+                ? "需求文档已生成，请确认后进入下一步。"
+                : "需求文档已更新，请确认后进入下一步。",
             version,
           });
         }

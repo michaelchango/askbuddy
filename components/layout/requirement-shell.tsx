@@ -19,7 +19,7 @@ import { nextStepOf } from "@/lib/steps-meta";
 import type { RequirementStatus, RequirementStep, StepName } from "@/types";
 import { STAGE_LABELS, proceedReplyText } from "@/lib/stage-meta";
 import { cn } from "@/lib/utils";
-import { EVT } from "@/lib/events";
+import { EVT, pendingGenMessages } from "@/lib/events";
 import { requirementStatusMeta } from "@/lib/display";
 import {
   requestPermission,
@@ -432,9 +432,13 @@ export function RequirementShell({
             } else if (eventType === "gen_message") {
               // 后端合成消息（已落库）：
               // 1) 派事件给对话面板即时追加；
-              // 2) 同时刷新 conversation SWR 做兜底，避免 rid/双 mount 时序导致事件静默丢失。
+              // 2) 同时刷新 conversation SWR 做兜底；
+              // 3) 再用 pendingGenMessages 缓存兜底，避免 panel 未 ready 时事件静默丢失。
               try {
                 const data = JSON.parse(raw) as { content: string };
+                const list = pendingGenMessages.get(requirementId) || [];
+                list.push(data.content);
+                pendingGenMessages.set(requirementId, list);
                 window.dispatchEvent(
                   new CustomEvent(EVT.GEN_MESSAGE, { detail: { content: data.content, requirementId } })
                 );
@@ -997,6 +1001,9 @@ export function RequirementShell({
             } else if (eventType === "gen_message") {
               try {
                 const data = JSON.parse(raw) as { content: string };
+                const list = pendingGenMessages.get(requirementId) || [];
+                list.push(data.content);
+                pendingGenMessages.set(requirementId, list);
                 window.dispatchEvent(
                   new CustomEvent(EVT.GEN_MESSAGE, { detail: { content: data.content, requirementId } })
                 );

@@ -26,3 +26,13 @@ export const EVT = {
 } as const;
 
 export type EvtName = (typeof EVT)[keyof typeof EVT];
+
+/**
+ * 最近派发的 GEN_MESSAGE 内容兜底缓存。
+ *
+ * 背景：requirement-shell 与 conversation-panel 通过 window CustomEvent 通信，
+ * 若事件派发时 panel 尚未 ready（rid 为 null 或正在 mount），消息会丢失。
+ * 此处缓存最近按 requirementId 派发的消息文本；panel 在 rid 就绪后主动 flush，
+ * 避免变更流程中「XX 已更新」的提示偶发消失。
+ */
+export const pendingGenMessages = new Map<string, string[]>();

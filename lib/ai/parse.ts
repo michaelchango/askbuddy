@@ -1,6 +1,13 @@
 // 结构化解析：从模型输出中抽取「自然语言回复」与「需求卡片」。
 // 约定（见 prompts/dialoguing）：模型先输出自然语言，最后以 ```json ... ``` 输出卡片。
 import { RequirementCardSchema, type RequirementCardData, type ResearchAnalysisOutput } from "./types";
+import {
+  unwrapMarkdownFence,
+  normalizeHeadings,
+  ensureMermaidFences,
+  sanitizeMermaidQuotes,
+  validateMermaidBlocks,
+} from "../utils/markdown";
 
 export interface ReplyAndCard {
   reply: string;
@@ -247,6 +254,13 @@ export function extractMarkdown(text: string): string {
   let out = text.trim();
   if (!out) return out;
 
+  // 0. 去除外围 ```markdown / ```md / ``` 围栏（AI 有时会整体包裹文档）
+  //    使用栈扫描，避免误伤内部 ``` 代码块（如 mermaid）。
+  out = unwrapMarkdownFence(out);
+
+  // 0.5 规范化 AI 常见标题格式错误：#1. 标题 → # 1. 标题；## #2. 标题 → ## 2. 标题
+  out = normalizeHeadings(out);
+
   // 1. 剥离尾部 ```json ... ``` 围栏
   out = out.replace(/```json\s*[\s\S]*?\s*```\s*$/i, "").trim();
   if (!out) return out;
@@ -263,7 +277,7 @@ export function extractMarkdown(text: string): string {
     }
   }
 
-  // 3. mermaid 收尾：围栏归一 + 落库前语法校验/修复（单反引号围栏 → 三反引号等）
+  // 3. mermaid 收尾：围栏归一 + 落库前语法校验/修复（未闭合 fence / 单反引号围栏等）
   const withMermaid = validateMermaidBlocks(
     sanitizeMermaidQuotes(ensureMermaidFences(out))
   );
@@ -316,246 +330,4 @@ export function extractPrototype(text: string): PrototypeParseResult {
   }
 
   return { html, structure };
-}
-
-// 补全未被 ```mermaid 围栏包裹的 mermaid 图块（幂等）。
-// 仅对"不在任何代码块内、且以 mermaid 起始关键字开头"的行块自动补围栏；
-// 已正确围栏或普通代码块一律跳过，避免重复包裹或误伤正文。
-const MERMAID_KEYWORDS = [
-  "flowchart", "graph", "sequenceDiagram", "classDiagram",
-  "stateDiagram", "erDiagram", "gantt", "journey", "pie",
-  "mindmap", "timeline", "gitGraph", "requirementDiagram",
-];
-
-// 图内部语法特征（节点定义 / 连线 / 子图等），用于判定非起始行是否属于图体。
-const MERMAID_BODY_RE =
-  /(-->)|\->>|(-{2,})|(\.-)|(===)|(-\|)|(==>)|subgraph|^end$|class |style |click |participant|note |direction|actor |state |fork|^[\t ]*[A-Za-z0-9_]+[[][A-Za-z0-9_]+|^[\t ]*[A-Za-z0-9_]+[(][A-Za-z0-9_]+/;
-
-function isMermaidStart(line: string): boolean {
-  const t = line.trim();
-  if (t.startsWith("```")) return false;
-  return MERMAID_KEYWORDS.some(
-    (kw) => t === kw || t.startsWith(kw + " ") || t.startsWith(kw + "\t")
-  );
-}
-
-function looksLikeMermaidBody(line: string): boolean {
-  const t = line.trim();
-  if (t === "") return false;
-  return MERMAID_BODY_RE.test(t);
-}
-
-export function ensureMermaidFences(text: string): string {
-  const lines = text.split("\n");
-  let inFence = false;
-  const result: string[] = [];
-  let block: string[] | null = null;
-
-  const flushBlock = () => {
-    if (block && block.length) {
-      result.push("```mermaid");
-      result.push(...block);
-      result.push("```");
-    }
-    block = null;
-  };
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    // 处理代码围栏（无论语言），透传即可
-    if (trimmed.startsWith("```")) {
-      flushBlock();
-      inFence = !inFence;
-      result.push(line);
-      continue;
-    }
-    if (inFence) {
-      result.push(line);
-      continue;
-    }
-
-    // 不在任何代码块内
-    if (isMermaidStart(line)) {
-      if (!block) block = [];
-      block.push(line);
-    } else if (block) {
-      if (trimmed === "" || trimmed.startsWith("#")) {
-        // 空行或新标题：闭合图块
-        flushBlock();
-        result.push(line);
-      } else if (looksLikeMermaidBody(line)) {
-        // 图内部行：继续并入图块
-        block.push(line);
-      } else {
-        // 非图文字：闭合图块后作为普通行
-        flushBlock();
-        result.push(line);
-      }
-    } else {
-      result.push(line);
-    }
-  }
-  flushBlock();
-
-  return result.join("\n").trim();
-}
-
-// ---------------------------------------------------------------------------
-// mermaid 代码块内容清洗
-// ---------------------------------------------------------------------------
-// 背景：模型在 mermaid 节点文本里偶尔使用英文双引号 " 包裹强调词（如
-// F[渲染"上海 今天 XX℃"]），而 mermaid 把 " 视为字符串定界符，导致解析断裂，
-// 报 "Syntax error in text"。清洗策略：仅对 ```mermaid 代码块内的节点文本，
-// 把英文双引号 " 成对替换为中文引号（“ … ”），既保留语义又规避语法冲突。
-// 注意：不处理非 mermaid 代码块，避免误伤普通代码里的字符串。
-const MM_RE = /```mermaid\s*\n([\s\S]*?)```/gi;
-
-// 把节点文本里的英文双引号 " 成对替换为中文引号 “ ”。
-// 策略：奇数位替换为 “，偶数位替换为 ”，保证成对；孤立单个 " 替换为 “。
-function fixQuotesInNodeText(code: string): string {
-  // 逐字符扫描，遇到 " 时按出现次序奇偶替换。仅替换双引号，不触碰其它字符。
-  let open = true;
-  return code.replace(/"/g, () => {
-    const ch = open ? "\u201C" : "\u201D"; // “ 或 ”
-    open = !open;
-    return ch;
-  });
-}
-
-/**
- * 清洗文档中所有 mermaid 代码块里的英文双引号（节点文本用）。
- * 幂等：无 mermaid 块或块内无 " 时原样返回。
- * 注意：本函数假设 mermaid 已是标准三反引号围栏（```` ```mermaid ````），
- * 单反引号围栏的修复交给 normalizeMermaidFences 在更早阶段完成。
- */
-export function sanitizeMermaidQuotes(text: string): string {
-  return text.replace(MM_RE, (whole, code: string) => {
-    return "```mermaid\n" + fixQuotesInNodeText(code) + "```";
-  });
-}
-
-// ---------------------------------------------------------------------------
-// mermaid 围栏归一 + 落库前语法校验
-// ---------------------------------------------------------------------------
-// 模型偶发把 mermaid 写成「单反引号」围栏（`mermaid ... `）而非标准三反引号
-// （```` ```mermaid ````），导致渲染器把它当成内联代码、mermaid 收到纯文本而报
-// "Syntax error in text"。这里在落库前把单反引号围栏归一为三反引号。
-// 单反引号围栏的特征：行首为单个反引号、紧跟 mermaid、整块以单个反引号结束。
-function normalizeMermaidFences(text: string): string {
-  const lines = text.split("\n");
-  const out: string[] = [];
-  let block: string[] | null = null;
-
-  const flush = () => {
-    if (block && block.length) {
-      out.push("```mermaid");
-      out.push(...block);
-      out.push("```");
-    }
-    block = null;
-  };
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    // 已经是正确的三反引号围栏：直接透传（跳过单反引号判定）
-    if (trimmed.startsWith("```")) {
-      flush();
-      out.push(line);
-      continue;
-    }
-    // 单反引号围栏开头
-    if (trimmed.startsWith("`") && /^`mermaid(\s.*)?$/.test(trimmed)) {
-      if (!block) block = [];
-      continue;
-    }
-    // 单反引号围栏结束
-    if (block && trimmed === "`") {
-      flush();
-      continue;
-    }
-    if (block) block.push(line);
-    else out.push(line);
-  }
-  flush();
-  return out.join("\n");
-}
-
-// 常见的 mermaid 语法错误自动修复。返回修复后的图体；若无法安全修复则原样返回。
-// 设计原则：仅做「高置信度」修正，绝不改写合法图，避免误伤。
-function repairMermaidBody(body: string): string {
-  let code = body;
-
-  // 1) 节点 label 用了未闭合/裸引号包裹、或标点冲突已在前一步处理；
-  //    这里修复「连线箭头被写成中文箭头」或「箭头两边粘连空格」之外的常见破绽：
-
-  // 2) 相邻两节点用换行 + 缩进写在一起但缺少箭头（极少见），跳过，避免误改。
-
-  // 3) 把图体内残留的「中文全角箭头 →」误写情形归一为 mermaid 不支持的符号移除
-  //    （mermaid 不认 →，若误写会导致语法错误）：直接删除行内的全角箭头字符。
-  code = code.replace(/→/g, "");
-
-  // 4) 节点标签里若仍残留成对的英文双引号（前序 sanitize 已处理，这里兜底），
-  //    再次确保成对转中文引号，避免 " 被当成字符串定界符。
-  //    只在出现奇数个 " 时才做奇偶替换，偶数个视为有意字符串，不动。
-  const quoteCount = (code.match(/"/g) || []).length;
-  if (quoteCount % 2 === 1) {
-    let open = true;
-    code = code.replace(/"/g, () => {
-      const ch = open ? "\u201C" : "\u201D";
-      open = !open;
-      return ch;
-    });
-  }
-
-  // 5) 句末残留的裸英文分号/多余花括号（模型偶发在节点后加 ;）清理
-  code = code.replace(/;\s*$/gm, "");
-
-  return code;
-}
-
-// 轻量 mermaid 语法校验：判定一个 mermaid 图体是否「很可能」合法。
-// 不依赖浏览器 DOM，仅做结构化静态检查，覆盖最高频的致命错误：
-//   - 缺少图类型声明（首行非 flowchart/graph/sequenceDiagram 等）
-//   - 出现裸英文双引号（奇数个 "）
-//   - 连线语法明显残缺（箭头缺失）
-// 返回 true 表示通过（或无法判定为错误）。
-const MERMAID_START_RE =
-  /^(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|journey|pie|mindmap|timeline|gitGraph|requirementDiagram)\b/i;
-
-function looksValidMermaid(body: string): boolean {
-  const lines = body.split("\n").map((l) => l.trim()).filter(Boolean);
-  if (!lines.length) return false;
-  if (!MERMAID_START_RE.test(lines[0])) return false;
-  // 奇数个 " 视为未闭合字符串，必然非法
-  const quoteCount = (body.match(/"/g) || []).length;
-  if (quoteCount % 2 === 1) return false;
-  // 含全角箭头必然非法
-  if (body.includes("→")) return false;
-  return true;
-}
-
-/**
- * 落库前对文档内所有 mermaid 代码块做「围栏归一 + 语法校验/修复」。
- * 流程：
- *   1. normalizeMermaidFences：单反引号围栏 → 三反引号（修复本次 "Syntax error in text" 的根因）
- *   2. 对每个 ```` ```mermaid ```` 块做轻量语法校验，不合法则尝试 repairMermaidBody 修复，
- *      修复后仍不合法则保留原块（交由前端回退为代码展示，绝不清空内容致文档残缺）。
- * 幂等：已是正确三反引号且语法合法的文档原样返回。
- */
-export function validateMermaidBlocks(text: string): string {
-  const normalized = normalizeMermaidFences(text);
-  return normalized.replace(/```mermaid\s*\n([\s\S]*?)```/gi, (whole, code: string) => {
-    const body = String(code).replace(/\n+$/, "");
-    const emit = (b: string) => "```mermaid\n" + b + "\n```";
-    if (looksValidMermaid(body)) {
-      return emit(body);
-    }
-    const fixed = repairMermaidBody(body);
-    if (looksValidMermaid(fixed)) {
-      return emit(fixed);
-    }
-    // 无法安全修复：保留原块，避免破坏文档内容
-    return emit(body);
-  });
 }

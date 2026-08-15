@@ -16,7 +16,7 @@ for (const line of envContent.split("\n")) {
 }
 
 const { db } = require("../lib/db") as typeof import("../lib/db");
-const { validateMermaidBlocks } = require("../lib/ai/parse") as typeof import("../lib/ai/parse");
+const { validateMermaidBlocks } = require("../lib/utils/markdown") as typeof import("../lib/utils/markdown");
 
 async function main() {
   let total = 0;
