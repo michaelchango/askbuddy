@@ -23,6 +23,12 @@ export const EVT = {
   LOCATE_SOURCE: "askbuddy:locate-source",
   /** 按钮手动进入下一阶段：shell 派发推进提示，panel 无 rid 守卫必收 */
   PROCEED_TIP: "askbuddy:proceed-tip",
+  /** 文档/重生成流开始：通知对话面板进入 doc-generating 阶段（发送禁用、可终止） */
+  DOC_GEN_START: "askbuddy:doc-gen-start",
+  /** 文档/重生成流结束：通知对话面板退出 doc-generating 阶段，恢复 idle */
+  DOC_GEN_END: "askbuddy:doc-gen-end",
+  /** 用户主动停止当前流（对话/文档/变更队列/DC）：shell 与 panel 统一监听执行 abort */
+  STOP_FLOW: "askbuddy:stop-flow",
 } as const;
 
 export type EvtName = (typeof EVT)[keyof typeof EVT];
@@ -36,3 +42,13 @@ export type EvtName = (typeof EVT)[keyof typeof EVT];
  * 避免变更流程中「XX 已更新」的提示偶发消失。
  */
 export const pendingGenMessages = new Map<string, string[]>();
+
+/**
+ * 最近派发的 CHANGE_COMPLETE 内容兜底缓存。
+ *
+ * 同 pendingGenMessages：若 dispatch 时 panel 还未 mount / rid 仍为 null，
+ * 事件会被监听器的 `if (!rid) return` 直接丢弃，导致变更完成总结
+ * 「✅ 变更已处理完成」在部分时序下消失。这里缓存受影响输出物列表，
+ * panel rid 就绪时 flush 后再调用 /conversation/summary 落库并展示。
+ */
+export const pendingChangeComplete = new Map<string, string[]>();

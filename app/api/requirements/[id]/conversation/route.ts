@@ -406,7 +406,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   // ===== 正常对话流程 =====
-  const stream = await streamDialogue(requirementId, message, references);
+  const stream = await streamDialogue(requirementId, message, references, req.signal);
   const encoder = new TextEncoder();
   let full = "";
 
@@ -576,6 +576,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
               })}\n\n`
             )
           );
+        }
+
+        // [PERSISTED] 本轮「文字已发完 + 落库/卡片抽取完成」的明确信号。
+        // 前端仅在收到此事件后才将发送按钮解禁，彻底消除「文字已显示但后端事务仍在跑」
+        // 期间用户发消息导致气泡消失、消息顺序错乱的窗口。
+        // 注意：用户主动停止（req.signal 已 aborted）时不再下发 persisted，
+        // 前端将本轮标记为已停止并恢复可发送，无需再等待完成信号。
+        if (!req.signal.aborted) {
+          controller.enqueue(encoder.encode(`event: persisted\ndata: {}\n\n`));
         }
 
         controller.enqueue(encoder.encode(`event: done\ndata: {}\n\n`));

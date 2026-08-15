@@ -155,7 +155,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         send("error", { message });
       } finally {
         // 兜底清除「生成中」标记：成功/失败/断连都必须置 false，避免永久卡在生成中
-        await setStepGenerating(params.id, "prd_writing", false).catch(() => {});
+        // [防御性修复] 一次失败就重试 2 次（间隔 200ms），覆盖 DB 瞬时 EMAXCONNSESSION 等错误。
+        // 任何重试都失败的话，DB 里 generating 会永远为 true，前端用 state/awaitingConfirm
+        // 兜底忽略该字段（见 requirement-shell 的 persistedGeneratingStep useMemo）。
+        let cleared = false;
+        for (let attempt = 0; attempt < 3 && !cleared; attempt++) {
+          try {
+            await setStepGenerating(params.id, "prd_writing", false);
+            cleared = true;
+          } catch {
+            if (attempt < 2) {
+              await new Promise((r) => setTimeout(r, 200));
+            }
+          }
+        }
         try {
           controller.close();
         } catch {

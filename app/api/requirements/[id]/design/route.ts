@@ -139,6 +139,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         const message = e instanceof Error ? e.message : String(e);
         console.error("[trace|design] SSE 流异常:", e);
         send("error", { message });
+        // [兜底] 即使进入 catch 也要尝试把「已生成/已更新」通知发出，避免 panel 永远等不到
+        // 该文档的状态变更通知（场景：finalizeStep 抛错但 addMessage/send_gen_message
+        // 已在更早的执行路径上完成过，这里只补一个事件，DB 已落库的消息由 SWR 兜底）。
+        try {
+          const fallbackMsg = mode === "normal"
+            ? `✅ 方案文档已生成，请确认后进入原型设计。`
+            : `✅ 方案文档已更新。`;
+          await addMessage(params.id, "assistant", fallbackMsg).catch(() => {});
+          send("gen_message", { content: fallbackMsg });
+        } catch {
+          /* ignore */
+        }
       } finally {
         clearTimeout(timeoutId);
         // 兜底清除「生成中」标记：成功/失败/断连/超时都必须置 false，避免永久卡在生成中。

@@ -19,7 +19,10 @@ import { nextStepOf } from "@/lib/steps-meta";
 import type { RequirementStatus, RequirementStep, StepName } from "@/types";
 import { STAGE_LABELS, proceedReplyText } from "@/lib/stage-meta";
 import { cn } from "@/lib/utils";
-import { EVT, pendingGenMessages } from "@/lib/events";
+import { EVT, pendingGenMessages, pendingChangeComplete } from "@/lib/events";
+// 注意：DevContext 后台生成的 abort 由后端 route（conversation/prd）在
+// req.signal.aborted 时自动调用 abortDcGen；客户端只需 abort 当前 SSE 流，
+// 因此此处不再 import 服务端模块（依赖 @cloudbase/node-sdk 与 fs）。
 import { requirementStatusMeta } from "@/lib/display";
 import {
   requestPermission,
@@ -112,6 +115,8 @@ export function RequirementShell({
   const generatingStepRef = useRef<StepName | null>(null);
   // 当前文档生成流的 AbortController，组件卸载时中止后台 SSE，避免已离开页面仍在派发事件
   const genAbortRef = useRef<AbortController | null>(null);
+  // 变更重生成队列的中断信号：用户主动停止时 abort，串行循环每轮开始检查，命中则中断后续任务。
+  const queueAbortRef = useRef<AbortController | null>(null);
   const [generationContent, setGenerationContent] = useState("");
   // DevContext 后台异步生成中的标记（PRD done 后置 true，面板轮询命中内容后置 false）。
   const [devContextPending, setDevContextPending] = useState(false);
@@ -200,8 +205,18 @@ export function RequirementShell({
   // 从持久化步骤派生「正在生成的步骤」（事实源为 requirement_steps.generating）。
   // 与前端内存态 generatingStep 不同：切走/重进页面后内存态丢失，但后端生成仍在继续，
   // 此处从 steps 接口恢复「生成中」信号，用于跨会话恢复左侧栏/查看器的生成态展示。
+  // [防御性修复] 若某 step 已 state=done 或 awaitingConfirm=true，说明该 step 已经生成完成
+  // 并等待/已结束确认闸门，仅 generating=true 不足以说明「正在生成」——
+  // 后端 finally 清理失败（DB 瞬时错误被 .catch 静默吞掉）会让 generating=true 永久残留，
+  // 此时右侧栏永久卡在「AI 正在生成...」。这里把这种「事实已完成」的 step 排除，
+  // 避免用户在已完成文档上看到「生成中」撕裂态。
   const persistedGeneratingStep = useMemo<StepName | null>(() => {
-    const g = steps.find((s) => s.generating === true);
+    const g = steps.find(
+      (s) =>
+        s.generating === true &&
+        s.state !== "done" &&
+        !(s.awaitingConfirm === true)
+    );
     return g ? g.step : null;
   }, [steps]);
 
@@ -344,6 +359,8 @@ export function RequirementShell({
       setGeneratingStep(step);
       generatingStepRef.current = step;
       setGenerationContent("");
+      // 进入文档/重生成流：通知对话面板进入「可终止」态并禁用发送，统一停止按钮体验。
+      window.dispatchEvent(new CustomEvent(EVT.DOC_GEN_START));
       // 自动切换右侧栏到对应输出物
       // 注意：design 是组类型，必须落到具体子产物上（"solution"=方案文档），
       // 否则左侧 OutputSidebar 会把「方案设计」组标题错误地标为 active——
@@ -494,6 +511,8 @@ export function RequirementShell({
         genAbortRef.current = null;
         setGeneratingStep(null);
         generatingStepRef.current = null;
+        // 文档流结束（含被用户停止）：通知对话面板退出「可终止」态，恢复可发送。
+        window.dispatchEvent(new CustomEvent(EVT.DOC_GEN_END));
       }
     },
     [req, requirementId, refreshSteps, refreshOutputs]
@@ -568,9 +587,22 @@ export function RequirementShell({
       lastProceedPromptRef.current = null;
       setPendingPrompt(null);
 
+      // 变更队列中断信号：用户主动停止时 abort，串行循环每轮开始检查，
+      // 命中则中断后续任务、保留已落库部分、剩余标记为 cancelled。
+      const queueCtrl = new AbortController();
+      queueAbortRef.current = queueCtrl;
+      // 进入变更重生成队列：通知对话面板进入「可终止」态，使停止按钮可中断队列。
+      window.dispatchEvent(new CustomEvent(EVT.DOC_GEN_START));
+
       // 串行执行（上游完成后再重生成下游）
       let hasChangeError = false;
+      let queueAborted = false;
       for (let i = 0; i < queue.length; i++) {
+        // 用户主动停止 → 中断后续任务，保留已完成的落库部分
+        if (queueCtrl.signal.aborted) {
+          queueAborted = true;
+          break;
+        }
         const item = queue[i];
         // 标记当前任务为生成中
         setChangeTasks((prev) =>
@@ -639,22 +671,71 @@ export function RequirementShell({
         }
       }
 
-      // 全部完成 → 延迟 1.5s 后清空队列并恢复按钮，让用户体验到"全部完成"
-      setTimeout(() => {
-        setChangeTasks([]);
-        // 恢复逻辑：优先使用本次更新最后一个任务下发的 proceed_prompt（流程已推进），
-        // 否则回退到变更前快照，确保按钮不会错误地"变化"或消失。
-        const restorePrompt = lastProceedPromptRef.current ?? pendingPromptBeforeChangeRef.current;
+      // 全部完成或被用户中断 → 处理队列清理与按钮恢复
+      if (queueAborted) {
+        // 被中断：保留已落库部分，把尚未开始的剩余任务标记为 cancelled，不发送总结、
+        // 不通知、立即恢复 pendingPrompt（不延迟 1.5s），让用户可立即继续操作。
+        setChangeTasks((prev) =>
+          prev.map((t) =>
+            t.status === "pending" || t.status === "generating"
+              ? { ...t, status: "cancelled" }
+              : t
+          )
+        );
+        // 立即恢复按钮（不延迟），使停止后可马上再发/再变更
+        const restorePrompt = pendingPromptBeforeChangeRef.current;
         setPendingPrompt(restorePrompt);
         lastProceedPromptRef.current = null;
         pendingPromptBeforeChangeRef.current = null;
         changeJustFinishedRef.current = true;
-      }, 1500);
+        setTimeout(() => setChangeTasks([]), 1200);
+      } else {
+        // 全部完成 → 延迟 1.5s 后清空队列并恢复按钮，让用户体验到"全部完成"
+        setTimeout(() => {
+          setChangeTasks([]);
+          // 恢复逻辑：优先使用本次更新最后一个任务下发的 proceed_prompt（流程已推进），
+          // 否则回退到变更前快照，确保按钮不会错误地"变化"或消失。
+          const restorePrompt =
+            lastProceedPromptRef.current ?? pendingPromptBeforeChangeRef.current;
+          setPendingPrompt(restorePrompt);
+          lastProceedPromptRef.current = null;
+          pendingPromptBeforeChangeRef.current = null;
+          changeJustFinishedRef.current = true;
+        }, 1500);
+        }
 
-      // 需求变更通知：整次变更作为整体，仅在所有输出物均成功完成后通知一次
-      const allDone = tasks.length > 0 && !hasChangeError;
+        // 变更队列结束（含被用户主动中断）：清理中断信号并通知对话面板退出「可终止」态。
+        queueAbortRef.current = null;
+        window.dispatchEvent(new CustomEvent(EVT.DOC_GEN_END));
+
+        // 需求变更通知：整次变更作为整体，仅在所有输出物均成功完成后通知一次
+      const allDone = !queueAborted && tasks.length > 0 && !hasChangeError;
       if (allDone) {
         notifyChangeComplete(req?.title ?? "", requirementId);
+
+        // [问题3深度修复] 变更流程完成后，对「应已完成的步骤」主动 PATCH state=done。
+        // 后端 research-analysis 路由按 isFrontierStep 决定标 done：下游只要不是
+        // not_started 就算非 frontier、应 markStepDone。但实测发现两个稳定 bug：
+        //   (1) 时序竞争 / 版本号提交失败 → markStepDone 静默吞掉（catch(()=>{})）
+        //   (2) 第二次变更时前一步骤可能仍是 pending_update，但下游是 in_progress
+        //       → markStepDone 仍应工作，但偶发卡在 in_progress。
+        // 这里额外兜底 PATCH：受影响 step 全部置 done。design/prd 步骤**保持当前
+        // 状态**（不强制 done）—— design 需要 prototype 完成才整体 done，prd 同理。
+        // 但 research_analysis 作为上游变更产物，每次变更完成后必须变 done。
+        if (affectedOutputs.includes("research_analysis")) {
+          try {
+            await fetch(`/api/requirements/${requirementId}/steps`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ step: "research_analysis", state: "done" }),
+            });
+          } catch {
+            /* 兜底失败不影响后续总结消息 */
+          }
+        }
+        // 强制重拉一次 steps，确保前端步骤条立刻反映最新 DB 状态
+        // （之前仅靠后端 SSE step_update 在 strict mode 双调用下可能被覆盖）。
+        await refreshSteps();
       }
 
       // 发送完成总结消息（含 card 等全部受影响输出物，供总结展示）
@@ -669,6 +750,11 @@ export function RequirementShell({
         if (idx >= 0) completeOutputs.splice(idx, 0, "prototype");
         else completeOutputs.push("prototype");
       }
+      // [问题1修复] 先写 pendingChangeComplete 兜底缓存（避免 panel 监听器 rid 仍
+      // 为 null 时事件被 `if (!rid) return` 直接丢弃），再派发事件。
+      const pendingList = pendingChangeComplete.get(requirementId) ?? [];
+      pendingList.push(...completeOutputs);
+      pendingChangeComplete.set(requirementId, pendingList);
       window.dispatchEvent(
         new CustomEvent(EVT.CHANGE_COMPLETE, {
           detail: {
@@ -930,6 +1016,9 @@ export function RequirementShell({
       // 自动将右侧栏切到原型子产物
       setSelected({ type: "design", subType: "prototype" });
       skipAutoRef.current = true;
+      // [问题4修复] 原型生成也属于"产出文档"范畴，让对话面板把按钮切到停止方块，
+      // 避免用户在原型还在生成时发送下一条对话消息。
+      window.dispatchEvent(new CustomEvent(EVT.DOC_GEN_START));
       try {
         const controller = new AbortController();
         genAbortRef.current = controller;
@@ -1054,6 +1143,8 @@ export function RequirementShell({
         genAbortRef.current = null;
         setGeneratingStep(null);
         generatingStepRef.current = null;
+        // [问题4修复] 原型生成结束：同步 DOC_GEN_END 让对话面板按钮恢复可发送。
+        window.dispatchEvent(new CustomEvent(EVT.DOC_GEN_END));
       }
     },
     [req, requirementId, refreshSteps, refreshOutputs]
@@ -1240,6 +1331,24 @@ export function RequirementShell({
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   }
+
+  // 用户主动停止当前所有流：对话流由 conversation-panel 自身 abort；此处统一负责
+  // 文档生成流（genAbortRef）、变更重生成队列（queueAbortRef）。
+  // DevContext 后台生成：客户端不直接调用 abortDcGen（避免拉入服务端 cloudbase/fs 依赖），
+  // 而是 abort 当前 SSE 流让后端 req.signal 触发 route 内的 abortDcGen 调用。
+  useEffect(() => {
+    const onStop = () => {
+      // 文档/重生成 SSE 流
+      genAbortRef.current?.abort();
+      genAbortRef.current = null;
+      // 变更重生成队列（串行循环每轮检查 aborted）
+      queueAbortRef.current?.abort();
+      queueAbortRef.current = null;
+      // DevContext：依赖上述 SSE abort 由后端自动触发（见 conversation/prd route）。
+    };
+    window.addEventListener(EVT.STOP_FLOW, onStop);
+    return () => window.removeEventListener(EVT.STOP_FLOW, onStop);
+  }, []);
 
   const rightOpen = selected != null;
 

@@ -15,7 +15,25 @@ export interface PendingPrompt {
 // 变更更新任务队列中的单个任务
 export interface ChangeTask {
   output: string;    // 输出物类型：card / research_analysis / design / prd
-  status: "pending" | "generating" | "done" | "error";
+  status: "pending" | "generating" | "done" | "error" | "cancelled";
+}
+
+// 对话输入框的交互阶段（决定发送/停止按钮的状态）
+export type ConvPhase =
+  | "idle"            // 可发送
+  | "thinking"        // 对话思考中（可终止）
+  | "streaming"       // 对话正文流出（可终止）
+  | "persisting"      // 文字已完，后端落库/卡片抽取中（禁用发送，不可终止）
+  | "doc-generating"  // 文档/重生成流中（禁用发送、可终止）
+  | "disabled";       // 需求已完成/归档，禁用
+
+export interface ConversationControls {
+  // 当前对话阶段
+  convPhase: ConvPhase;
+  // 是否可终止当前流（对话/文档）
+  canStop: boolean;
+  // 用户主动停止：中止当前对话流或文档生成流
+  onStop: () => void;
 }
 
 export interface WorkflowState {

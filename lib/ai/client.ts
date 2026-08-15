@@ -55,10 +55,10 @@ async function realGenerate(taskType: AITaskType, messages: ChatMessage[], signa
   return streamToText(taskType, messages, signal);
 }
 
-async function* realStream(taskType: AITaskType, messages: ChatMessage[]): AsyncGenerator<string> {
+async function* realStream(taskType: AITaskType, messages: ChatMessage[], signal?: AbortSignal): AsyncGenerator<string> {
   const ai = getCloudAI();
   const model = ai.createModel("cloudbase");
-  const res = await model.streamText({ model: pickModel(taskType), messages });
+  const res = await model.streamText({ model: pickModel(taskType), messages, ...(signal ? { signal } : {}) });
   for await (const chunk of res.textStream) {
     if (chunk) yield chunk;
   }
@@ -182,10 +182,12 @@ function mockText(taskType: AITaskType, messages: ChatMessage[]): string {
   return `[MOCK:${pickModel(taskType)}] 占位输出：${(lastUser?.content ?? "").slice(0, 40)}`;
 }
 
-async function* mockStream(taskType: AITaskType, messages: ChatMessage[]): AsyncGenerator<string> {
+async function* mockStream(taskType: AITaskType, messages: ChatMessage[], signal?: AbortSignal): AsyncGenerator<string> {
   const text = mockText(taskType, messages);
   const chunks = text.match(/[\s\S]{1,8}/g) ?? [text];
   for (const c of chunks) {
+    // 用户主动停止：mock 模式下也响应中断，立即结束流（与真实模型 signal 行为一致）
+    if (signal?.aborted) return;
     await new Promise((r) => setTimeout(r, 12));
     yield c;
   }
@@ -198,8 +200,8 @@ export async function callAI(taskType: AITaskType, messages: ChatMessage[], sign
 }
 
 // 流式生成：返回文本块流（ReadableStream<string>），供 SSE 边生成边推送。
-export function streamAI(taskType: AITaskType, messages: ChatMessage[]): ReadableStream<string> {
-  const gen = aiUseMock() ? mockStream(taskType, messages) : realStream(taskType, messages);
+export function streamAI(taskType: AITaskType, messages: ChatMessage[], signal?: AbortSignal): ReadableStream<string> {
+  const gen = aiUseMock() ? mockStream(taskType, messages, signal) : realStream(taskType, messages, signal);
   return new ReadableStream<string>({
     async pull(controller) {
       try {

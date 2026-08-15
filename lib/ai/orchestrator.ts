@@ -21,7 +21,8 @@ export interface ChatReference {
 export async function streamDialogue(
   requirementId: string,
   message: string,
-  references: ChatReference[] = []
+  references: ChatReference[] = [],
+  signal?: AbortSignal
 ): Promise<ReadableStream<string>> {
   // 解析被引用的输出物内容
   const refBlocks: string[] = [];
@@ -53,7 +54,7 @@ export async function streamDialogue(
       }),
     },
   ];
-  return streamAI("dialoguing", messages);
+  return streamAI("dialoguing", messages, signal);
 }
 
 export interface DialogueFinalize {

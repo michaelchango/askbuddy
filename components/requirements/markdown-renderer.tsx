@@ -104,7 +104,9 @@ function MarkdownRendererInner({
       remarkPlugins={[remarkGfm]}
       components={{
         h1: ({ children }) => (
-          <h1 className="mt-5 mb-2 text-xl font-bold text-slate-900">{children}</h1>
+          <h1 className="mt-6 mb-3 border-b border-slate-200 pb-2 text-[22px] font-bold tracking-tight text-slate-900">
+            {children}
+          </h1>
         ),
         h2: ({ children }) => {
           // M3 · 章节级溯源：h2 挂 id + data-source-anchor，正文保持纯净，
@@ -114,26 +116,36 @@ function MarkdownRendererInner({
             <h2
               id={slug}
               data-source-anchor={slug}
-              className="mt-5 mb-2 scroll-mt-4 text-lg font-semibold text-slate-900"
+              className="mt-5 mb-2 scroll-mt-4 text-[18px] font-semibold tracking-tight text-slate-900"
             >
               {children}
             </h2>
           );
         },
         h3: ({ children }) => (
-          <h3 className="mt-4 mb-1.5 text-base font-semibold text-slate-800">{children}</h3>
+          <h3 className="mt-4 mb-2 text-[16px] font-semibold text-slate-800">
+            {children}
+          </h3>
         ),
         h4: ({ children }) => (
-          <h4 className="mt-3 mb-1 text-sm font-semibold text-slate-800">{children}</h4>
+          <h4 className="mt-3 mb-1 text-[15px] font-semibold text-slate-800">
+            {children}
+          </h4>
         ),
         h5: ({ children }) => (
-          <h5 className="mt-3 mb-1 text-[13px] font-semibold text-slate-800">{children}</h5>
+          <h5 className="mt-3 mb-1 text-[14px] font-semibold text-slate-800">
+            {children}
+          </h5>
         ),
         h6: ({ children }) => (
-          <h6 className="mt-3 mb-1 text-[13px] font-medium text-slate-600">{children}</h6>
+          <h6 className="mt-3 mb-1 text-[13px] font-medium text-slate-600">
+            {children}
+          </h6>
         ),
         p: ({ children }) => (
-          <p className="my-2 leading-relaxed text-slate-700">{children}</p>
+          <p className="my-2.5 text-[14px] leading-[1.75] text-slate-700">
+            {children}
+          </p>
         ),
         ul: ({ children }) => (
           <ul className="my-2 list-disc space-y-1 pl-5 text-slate-700">{children}</ul>

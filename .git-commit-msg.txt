@@ -1,7 +1,0 @@
-统一提示文案并修复跨组件事件丢失与 Markdown/mermaid 渲染问题
-
-- 将阶段完成提示文案由"请点击"改为"请确认后..."通用文案（research-analysis/design/prd）
-- 新增 lib/utils/markdown.ts 统一前后端 Markdown 规范化（栈扫描解包、标题规范、mermaid 围栏修复与校验），移除 parse.ts 与 markdown-renderer.tsx 中的重复实现
-- lib/events.ts 增加 pendingGenMessages 缓存，修复 requirement-shell 派发 gen_message 时 conversation-panel 未就绪导致的提示丢失
-- conversation-panel 在 rid 就绪后 flush 缓存并去重追加
-- 强化 designing.ts 对 mermaid 闭合的要求，更新相关 scripts 的 import 路径

@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR, { mutate } from "swr";
 import { cn } from "@/lib/utils";
-import { EVT, pendingGenMessages } from "@/lib/events";
-import { ArrowUp, Link2, Plus, User, X, Copy, Check, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
+import { EVT, pendingGenMessages, pendingChangeComplete } from "@/lib/events";
+import { ArrowUp, Link2, Plus, User, X, Copy, Check, ArrowRight, CheckCircle2, Loader2, Square } from "lucide-react";
 import { ReferencePanel, type PickedReference } from "./reference-panel";
 import MarkdownRenderer from "./markdown-renderer";
 import { useWorkflow } from "@/components/requirements/workflow-context";
+import type { ConvPhase } from "@/components/requirements/workflow-context";
 import type { OutputMeta, OutputType } from "@/lib/services/outputs";
 import type { RequirementStatus } from "@/types";
 import { reorderForDisplay } from "@/lib/services/conversation-order";
@@ -55,6 +56,7 @@ interface Msg {
   role: string;
   content: string;
   created_at: string;
+  isThinking?: boolean;
   meta?: { references?: ChatRef[] } | null;
 }
 
@@ -104,6 +106,65 @@ export function ConversationPanel({
     });
   }, [rid]);
 
+  // 兜底 flush：变更完成总结事件（CHANGE_COMPLETE）若在 rid 未就绪时派发，
+  // 监听器内 `if (!rid) return` 会直接丢弃。rid 就绪后从 pendingChangeComplete
+  // 取出受影响输出物，重新走 /conversation/summary 接口落库并显示总结消息，
+  // 保证「✅ 变更已处理完成」在 panel 后挂载场景下不丢失。
+  useEffect(() => {
+    if (!rid) return;
+    const pending = pendingChangeComplete.get(rid);
+    if (!pending || pending.length === 0) return;
+    // 取走并清空：标记为「已被 flush 处理」，listener 后跑时遇到空缓存会跳过。
+    pendingChangeComplete.delete(rid);
+    void (async () => {
+      let content: string | null = null;
+      try {
+        const r = await fetch(`/api/requirements/${rid}/conversation/summary`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ affectedOutputs: pending }),
+        });
+        const j = (await r.json()) as
+          | { ok?: boolean; data?: { content?: string | null } }
+          | undefined;
+        if (j?.ok && typeof j.data?.content === "string" && j.data.content) {
+          content = j.data.content;
+        }
+      } catch {
+        /* 走下方兜底 */
+      }
+      if (!content) {
+        const labels: Record<string, string> = {
+          card: "需求卡片",
+          research_analysis: "调研报告",
+          design: "方案文档",
+          prototype: "交互原型",
+          prd: "需求文档",
+          prd_writing: "需求文档",
+        };
+        const ORDER = ["card", "research_analysis", "design", "prototype", "prd"];
+        const sorted = [...pending].sort(
+          (a, b) => ORDER.indexOf(a) - ORDER.indexOf(b)
+        );
+        const updatedList = sorted.map((s) => labels[s] ?? s).join("、");
+        content = `✅ 变更已处理完成，涉及 ${updatedList}。如需进一步调整请继续描述。`;
+      }
+      setMessages((m) => {
+        const last = m[m.length - 1];
+        if (last && last.role === "assistant" && last.content === content) return m;
+        return [
+          ...m,
+          {
+            id: nextMsgId(),
+            role: "assistant",
+            content,
+            created_at: new Date().toISOString(),
+          },
+        ];
+      });
+    })();
+  }, [rid]);
+
   // 已生成输出物（供引用面板使用）。与 requirement-shell 共享 SWR 缓存，不额外轮询。
   const { data: outputs } = useSWR<OutputMeta[]>(
     rid ? `/api/requirements/${rid}/outputs` : null,
@@ -113,9 +174,17 @@ export function ConversationPanel({
   const existingOutputs = (outputs ?? []).filter((o) => o.exists);
 
   const [messages, setMessages] = useState<Msg[]>([]);
-  const [draft, setDraft] = useState("");
   const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
+  // 对话交互阶段（替代原 busy 的布尔判定，统一发送/停止按钮状态）：
+  // idle=可发送，thinking=思考中(可终止)，streaming=流出中(可终止)，
+  // persisting=后端落库中(禁用)，doc-generating=文档/重生成流(可终止)，disabled=已完成/归档。
+  const [convPhase, setConvPhase] = useState<ConvPhase>("idle");
+  const convPhaseRef = useRef<ConvPhase>("idle");
+  // 包装 setConvPhase，使 ref 始终反映最新 phase（在 reader 回调的闭包中也能读到实时值）
+  const updateConvPhase = useCallback((p: ConvPhase) => {
+    convPhaseRef.current = p;
+    setConvPhase(p);
+  }, []);
   const [focused, setFocused] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 工作流：当后端判定当前阶段产物已完成、可进入下一阶段时，pendingPrompt 非空，
@@ -187,10 +256,23 @@ export function ConversationPanel({
       return [...prev, ...additions];
     });
   }, [data, messages.length]);
+  // [问题2修复] 渲染层防御：**相邻**同 role + content 完全相同的气泡只显示第一条。
+  // 变更分支的 changeReply 在时序竞争下会同时被 SSE delta 与 SWR 拉回的
+  // 历史数据两条路径持有一条——这两条在数组中相邻，用相邻去重即可消除重复，
+  // 且不会误伤「非相邻但内容恰好相同」的合法消息（如连续两轮相同的总结/导航回复）。
+  const renderedMessages = useMemo(() => {
+    const out: Msg[] = [];
+    for (const m of messages) {
+      const last = out[out.length - 1];
+      if (last && last.role === m.role && last.content === m.content) continue;
+      out.push(m);
+    }
+    return out;
+  }, [messages]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "instant" as ScrollBehavior });
-  }, [messages, draft]);
+  }, [messages]);
 
   function stripCardFence(t: string): string {
     const i = t.search(/```json|```/i);
@@ -220,8 +302,8 @@ export function ConversationPanel({
   async function send() {
     const message = text.trim();
     const refs = references;
-    if (!message || busy) return;
-    setBusy(true);
+    if (!message || convPhase !== "idle") return;
+    updateConvPhase("thinking");
     setError(null);
     setText("");
     if (taRef.current) taRef.current.style.height = "auto";
@@ -229,11 +311,16 @@ export function ConversationPanel({
     hasSentRef.current = true;
 
     // 取消上一轮仍在后台读取的对话流（其文字已显示，但卡片抽取 / 落库等后端工作可能还在跑）。
-    // 否则上一轮 done 的 finally 会把本轮（新发送）的 busy 状态误解除，造成按钮在生成中变可点。
+    // 否则上一轮 done 的 finally 会把本轮（新发送）的 convPhase 状态误解除，造成按钮在生成中变可点。
     convAbortRef.current?.abort();
     const ac = new AbortController();
     convAbortRef.current = ac;
     const mySendId = ++convSendIdRef.current;
+
+    // 跨 try/catch/finally 共享：占位气泡 id、累积流式文本、后端正式回复
+    const thinkingId = nextMsgId();
+    let acc = "";
+    let finalReply = "";
 
     let currentId = rid;
     try {
@@ -241,7 +328,7 @@ export function ConversationPanel({
         if (!onFirstSend) return;
         currentId = await onFirstSend(message);
         if (!currentId) {
-          setBusy(false);
+          updateConvPhase("idle");
           return;
         }
         setRid(currentId);
@@ -254,13 +341,22 @@ export function ConversationPanel({
         created_at: new Date().toISOString(),
         meta: refs.length ? { references: refs } : null,
       };
-      setMessages((m) => [...m, userMsg]);
+      // [问题1] 立即显示思考占位气泡：用户消息入列后马上追加一条 assistant 占位，
+      // 内容为动态「正在思考…」，首个真实 delta 到达后无缝替换为流式正文。
+      setMessages((m) => [
+        ...m,
+        userMsg,
+        {
+          id: thinkingId,
+          role: "assistant",
+          content: "",
+          created_at: new Date().toISOString(),
+          isThinking: true,
+        },
+      ]);
       setReferences([]);
-      setDraft("");
-      let acc = "";
       // 后端在 done 前通过 event: reply 下发已清理的正式回复（问题1修复：
       // 模型可能仅输出卡片 JSON 无正文，此时气泡优先使用后端 finalReply）
-      let finalReply = "";
 
       const res = await fetch(`/api/requirements/${currentId}/conversation`, {
         method: "POST",
@@ -283,7 +379,19 @@ export function ConversationPanel({
             try {
               const delta = JSON.parse(data) as string;
               acc += delta;
-              setDraft(stripCardFence(acc));
+              // [问题1修复] 流式过程不再独立维护 draft：占位气泡的 content 字段就是
+              // 单一一份「流式正文」渲染源，避免与气泡内容叠加显示导致重复。
+              // 首个真实内容到达 → 把思考占位气泡转为正常流式气泡（convPhase 进入流出态）。
+              setMessages((m) =>
+                m.map((msg) =>
+                  msg.id === thinkingId && msg.isThinking
+                    ? { ...msg, isThinking: false, content: stripCardFence(acc) }
+                    : msg
+                )
+              );
+              if (convSendIdRef.current === mySendId && convPhaseRef.current === "thinking") {
+                updateConvPhase("streaming");
+              }
             } catch {
               /* ignore */
             }
@@ -295,9 +403,10 @@ export function ConversationPanel({
             } catch {
               /* ignore */
             }
-            // AI 文字回复已完整下发 → 立即解禁发送按钮，不再等待卡片抽取 / 落库等后续后端工作。
-            // 仅当本轮仍是当前轮时才解禁，避免被已取消的旧流 finally 误触。
-            if (convSendIdRef.current === mySendId) setBusy(false);
+            // [修正] AI 文字回复已完整下发后，本轮进入「后端落库/卡片抽取中」阶段，
+            // 此期间仍禁用发送按钮（persisting），直到收到后端 event: persisted 才解禁。
+            // 这彻底消除「文字已显示但后端事务未完」时发消息导致气泡消失、顺序错乱的窗口。
+            if (convSendIdRef.current === mySendId) updateConvPhase("persisting");
           } else if (event === "card") {
             // 卡片成功回传说明 DB 此刻可达，清掉任何残留错误横幅
             setError(null);
@@ -337,6 +446,10 @@ export function ConversationPanel({
             } catch {
               setError("对话出错");
             }
+          } else if (event === "persisted") {
+            // [解禁时机] 后端已确认「文字下发完 + 落库/卡片抽取完成」→ 本轮安全结束，
+            // 恢复可发送，彻底消除中间窗口。仅当本轮仍是当前轮时解禁，避免被旧流误触。
+            if (convSendIdRef.current === mySendId) updateConvPhase("idle");
           } else if (event === "done") {
             // 本轮正常结束：此前任何瞬时错误都已过时，清除横幅（避免「报错一直显示」）
             if (errTimerRef.current) {
@@ -344,6 +457,11 @@ export function ConversationPanel({
               errTimerRef.current = null;
             }
             setError(null);
+            // 兜底解禁：极少数情况下若未收到 persisted（旧后端 / 兼容路径），
+            // 仍以 done 作为恢复可发送的信号，避免按钮卡死在 persisting。
+            if (convSendIdRef.current === mySendId && convPhaseRef.current !== "idle") {
+              updateConvPhase("idle");
+            }
           } else if (event === "step_update") {
             // 进展类事件到达即视为本轮已推进成功，清掉残留错误横幅
             setError(null);
@@ -424,8 +542,21 @@ export function ConversationPanel({
       // 本轮助手消息：优先使用后端 reply 事件下发的正式回复（兜底流式清理文本），
       // 修复模型仅输出卡片 JSON 时气泡空白的问题。
       // 兜底：当回复完全为空时使用默认文本，防止气泡消失。
+      // [关键] 直接更新本轮的 thinkingId 占位气泡，而不是新建一条消息，
+      // 避免占位气泡与正式消息重复、以及被 GEN_MESSAGE 事件再次追加导致错乱。
       const bubbleText = finalReply || stripCardFence(acc) || "好的，已收到。";
-      if (bubbleText) {
+      let placeholderStillOpen = false;
+      setMessages((m) =>
+        m.map((msg) => {
+          if (msg.id === thinkingId) {
+            placeholderStillOpen = true;
+            return { ...msg, isThinking: false, content: bubbleText };
+          }
+          return msg;
+        })
+      );
+      // 理论上占位气泡必然存在（send 时已创建）；此处冗余兜底：若因异常未创建则补建一条。
+      if (!placeholderStillOpen) {
         setMessages((m) => [
           ...m,
           {
@@ -436,7 +567,6 @@ export function ConversationPanel({
           },
         ]);
       }
-      setDraft("");
       // 对话完成后直接拉取 outputs 并注入 SWR 缓存，确保侧边栏即时更新
       if (currentId) {
         try {
@@ -448,23 +578,78 @@ export function ConversationPanel({
         }
       }
     } catch (e) {
-      // 被新一轮发送主动取消（AbortError）：属正常流程，不报错、不干扰新一轮的 busy 状态。
+      // 被新一轮发送主动取消 / 用户主动停止（AbortError）：属正常流程，不报错、不干扰新一轮状态。
       if (e instanceof DOMException && e.name === "AbortError") {
+        // 用户主动停止对话流：把本轮 thinking 占位气泡定型——保留已流式内容，
+        // 若尚无任何正文则填充一句「已停止生成」，避免气泡永远卡在「正在思考…」。
+        const accText = finalReply || stripCardFence(acc);
+        setMessages((m) =>
+          m.map((msg) => {
+            if (msg.id === thinkingId && msg.isThinking) {
+              return {
+                ...msg,
+                isThinking: false,
+                content: accText || "（已停止生成）",
+              };
+            }
+            return msg;
+          })
+        );
         return;
       }
       setError(e instanceof Error ? e.message : "发送失败");
     } finally {
-      // 仅当本轮仍是当前轮时才解禁按钮（被取消的旧流不要误触新一轮状态）。
-      if (convSendIdRef.current === mySendId) setBusy(false);
+      // 仅当本轮仍是当前轮时才恢复按钮（被取消的旧流不要误触新一轮状态）。
+      // 被用户主动停止（aborted）→ 回到 idle 可立即再发；未 abort 但卡在 persisting
+      // （极端异常路径）→ 兜底 idle，避免按钮永久禁用。
+      if (convSendIdRef.current === mySendId) {
+        const aborted = ac.signal.aborted;
+        updateConvPhase(aborted || convPhaseRef.current === "persisting" ? "idle" : convPhaseRef.current);
+      }
       if (convAbortRef.current === ac) convAbortRef.current = null;
     }
   }
+
+  // 用户主动停止当前流：对话流直接 abort 本地读取；文档/重生成/DC 流通过 STOP_FLOW
+  // 事件通知 shell 执行对应 abort。停止后由各自的兜底逻辑回到 idle 可发送。
+  function stopFlow() {
+    convAbortRef.current?.abort();
+    window.dispatchEvent(new CustomEvent(EVT.STOP_FLOW, { detail: { requirementId: rid } }));
+  }
+
+  // 监听文档/重生成流的开始与结束，使输入框按钮进入「可终止」态并禁用发送。
+  useEffect(() => {
+    const onStart = () =>
+      setConvPhase((p) => {
+        if (p === "idle") {
+          convPhaseRef.current = "doc-generating";
+          return "doc-generating";
+        }
+        return p;
+      });
+    const onEnd = () =>
+      setConvPhase((p) => {
+        if (p === "doc-generating") {
+          convPhaseRef.current = "idle";
+          return "idle";
+        }
+        return p;
+      });
+    window.addEventListener(EVT.DOC_GEN_START, onStart);
+    window.addEventListener(EVT.DOC_GEN_END, onEnd);
+    return () => {
+      window.removeEventListener(EVT.DOC_GEN_START, onStart);
+      window.removeEventListener(EVT.DOC_GEN_END, onEnd);
+    };
+  }, []);
 
   // 监听后端合成消息（已落库）→ 实时追加到对话（替代原仅存本地 state 的 generation-complete）
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { content: string; requirementId?: string };
-      if (detail.requirementId !== rid) return;
+      // 统一 String() 后再比较，防御 shell 侧 URL 字符串与 panel 侧 id 的类型漂移
+      // （历史出现过 number/string 不一致导致消息静默丢弃）。
+      if (String(detail.requirementId) !== String(rid)) return;
       if (!detail.content) return;
       setMessages((m) => {
         // 防御性去重：若最后一条助手消息内容完全相同（后端 addMessage 落库 +
@@ -497,7 +682,8 @@ export function ConversationPanel({
       const content = detail?.content;
       if (!content) return;
       // 只在 rid 已 set 且与派发端 requirementId 不匹配时丢弃（防止跨页面串扰）
-      if (rid && detail.requirementId && detail.requirementId !== rid) return;
+      // String() 统一类型：shell 侧为 URL 字符串、panel 侧 rid 可能为 number。
+      if (rid && detail.requirementId && String(detail.requirementId) !== String(rid)) return;
       setMessages((m) => {
         const last = m[m.length - 1];
         if (last && last.role === "assistant" && last.content === content) return m;
@@ -549,8 +735,11 @@ export function ConversationPanel({
         requirementId: string;
         affectedOutputs: string[];
       };
-      if (!rid || detail.requirementId !== rid) return;
+      if (!rid || String(detail.requirementId) !== String(rid)) return;
       if (!Array.isArray(detail.affectedOutputs) || detail.affectedOutputs.length === 0) return;
+      // [问题1修复] 同步清空 pendingChangeComplete 兜底缓存（监听器已经处理了，
+      // 避免下方 rid-ready flush effect 重复执行导致总结消息出现两次）。
+      pendingChangeComplete.delete(rid);
 
       let content: string | null = null;
       try {
@@ -588,6 +777,10 @@ export function ConversationPanel({
         const updatedList = sorted.map((s) => labels[s] ?? s).join("、");
         content = `✅ 变更已处理完成，涉及 ${updatedList}。如需进一步调整请继续描述。`;
       }
+      // [兜底修复] 主动触发 SWR mutate 重新拉取 conversation，确保所有「X已更新」通知
+      // 也通过 SWR 重新拉取显示（即便 GEN_MESSAGE 事件因 SSE 时序竞争丢失，重新拉取后
+      // DB 已落库的合成消息也会通过 useEffect 增量同步追加到 messages 数组）。
+      void mutate(`/api/requirements/${rid}/conversation`);
       setMessages((m) => {
         // 防御性去重：同一条变更总结若已被追加（重复派发），不重复追加
         const last = m[m.length - 1];
@@ -616,7 +809,7 @@ export function ConversationPanel({
         step: string;
         message: string;
       };
-      if (!detail.requirementId || detail.requirementId !== rid) return;
+      if (!detail.requirementId || String(detail.requirementId) !== String(rid)) return;
       const msg = detail.message || "自动推进生成失败，请通过上方阶段栏按钮重试。";
       setError(msg);
       // 8 秒后自动消失（可恢复性质）
@@ -658,7 +851,7 @@ export function ConversationPanel({
   return (
     <div className="flex h-full flex-col bg-white">
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto [scrollbar-gutter:stable] px-6 py-[18px]">
-        {messages.map((m, i) => (
+        {renderedMessages.map((m, i) => (
           <div
             key={m.id}
             data-turn={i + 1}
@@ -698,8 +891,19 @@ export function ConversationPanel({
                   {m.content}
                 </span>
               ) : (
-                <span className="inline-block rounded-bl-[18px] rounded-br-[18px] rounded-tl-[5px] rounded-tr-[18px] bg-[#F9F8F5] px-4 py-2.5 text-[15.75px] leading-relaxed text-[#111111] ring-1 ring-[#1111111a]">
-                  <MarkdownRenderer content={m.content} disableMermaid />
+                <span className="inline-block rounded-bl-[18px] rounded-br-[18px] rounded-tl-[5px] rounded-tr-[18px] bg-[#F9F8F5] px-4 py-2.5 text-[15.75px] leading-relaxed text-[#111111] ring-1 ring-[#1111111a] [word-break:break-word] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                  {m.isThinking ? (
+                    // 思考占位态：仅显示三点动画，文案由右上角 phase 提示承载。
+                    <span className="flex items-center gap-1.5 text-[#78746C]">
+                      <span className="inline-flex gap-1">
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#f66612] [animation-delay:-0.3s]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#f66612] [animation-delay:-0.15s]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#f66612]" />
+                      </span>
+                    </span>
+                  ) : (
+                    <MarkdownRenderer content={m.content} disableMermaid />
+                  )}
                 </span>
               )}
               {m.role === "user" ? (
@@ -728,22 +932,7 @@ export function ConversationPanel({
             </div>
           </div>
         ))}
-        {draft && (
-          <div className="flex items-start gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/logo-orange.png" alt="AskBuddy" className="h-7 w-7 object-contain" />
-            </span>
-            <div className="flex min-w-0 max-w-[80%] flex-col items-start">
-              <span className="inline-block rounded-bl-[18px] rounded-br-[18px] rounded-tl-[5px] rounded-tr-[18px] bg-[#F9F8F5] px-4 py-2.5 text-[15.75px] leading-relaxed text-[#111111] ring-1 ring-[#1111111a]">
-                <MarkdownRenderer content={draft} disableMermaid />
-                <span className="ml-0.5 inline-block h-4 w-1.5 translate-y-0.5 animate-pulse bg-brand" />
-              </span>
-              <span className="mt-1 px-1 text-[11px] text-slate-400">生成中…</span>
-            </div>
-          </div>
-        )}
-        {messages.length === 0 && !draft && (
+        {messages.length === 0 && (
           <div className="py-10 text-center text-sm text-slate-400">
             发送第一条消息，开始创建你的需求。
           </div>
@@ -891,15 +1080,40 @@ export function ConversationPanel({
             ) : (
               <span className="h-9 w-9" />
             )}
-            <button
-              type="button"
-              onClick={send}
-              disabled={busy || status === "completed" || status === "archived"}
-              className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand text-white transition-opacity disabled:opacity-40"
-              title="发送"
-            >
-              <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
-            </button>
+            {(() => {
+              const isGenerating =
+                convPhase === "thinking" ||
+                convPhase === "streaming" ||
+                convPhase === "doc-generating";
+              // 可终止阶段（对话思考/流出/文档生成）→ 显示停止方块；
+              // 后端落库中的 persisting、已完成/归档 → 禁用（无操作）。
+              const isStoppable = isGenerating;
+              if (isStoppable) {
+                return (
+                  <button
+                    type="button"
+                    onClick={stopFlow}
+                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#E5484D] text-white transition-colors hover:bg-[#c93b40]"
+                    title="停止生成"
+                  >
+                    <Square className="h-[15px] w-[15px]" fill="currentColor" strokeWidth={0} />
+                  </button>
+                );
+              }
+              const isDisabled =
+                convPhase !== "idle" || status === "completed" || status === "archived";
+              return (
+                <button
+                  type="button"
+                  onClick={send}
+                  disabled={isDisabled}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+                  title={isDisabled ? "生成中，请稍候" : "发送"}
+                >
+                  <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
+                </button>
+              );
+            })()}
           </div>
         </div>
       </div>
