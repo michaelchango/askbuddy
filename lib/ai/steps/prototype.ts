@@ -8,6 +8,7 @@ export interface StreamPrototypeOpts {
   message?: string;
   baseVersionId?: number;
   changeNote?: string;
+  signal?: AbortSignal;
 }
 
 // 生成/修改原型的流式接口：返回文本块流（ReadableStream<string>），供 SSE 边生成边推送。
@@ -36,5 +37,5 @@ export async function streamPrototype(
     },
   ];
 
-  return streamAI(taskType, messages);
+  return streamAI(taskType, messages, opts.signal);
 }

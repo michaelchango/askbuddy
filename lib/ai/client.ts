@@ -60,6 +60,9 @@ async function* realStream(taskType: AITaskType, messages: ChatMessage[], signal
   const model = ai.createModel("cloudbase");
   const res = await model.streamText({ model: pickModel(taskType), messages, ...(signal ? { signal } : {}) });
   for await (const chunk of res.textStream) {
+    // 用户主动终止（客户端断开 / 点终止按钮）：立即停止向流里写入，
+    // 使上游 reader 循环提前收到 done，已累积的 full 即为「终止时」的文档内容。
+    if (signal?.aborted) break;
     if (chunk) yield chunk;
   }
 }

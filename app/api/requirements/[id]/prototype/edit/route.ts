@@ -19,5 +19,5 @@ export async function POST(
     message: body?.message ?? "",
     baseVersionId: body?.baseVersionId,
     changeNote: body?.changeNote ?? body?.message,
-  });
+  }, req.signal);
 }

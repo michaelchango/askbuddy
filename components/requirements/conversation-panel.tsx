@@ -174,6 +174,11 @@ export function ConversationPanel({
   const existingOutputs = (outputs ?? []).filter((o) => o.exists);
 
   const [messages, setMessages] = useState<Msg[]>([]);
+  // 流式正文（独立渲染源）：仅在 SSE 流期间持有 delta 累积文本，渲染为 messages
+  // 列表末尾的独立 trailing 流式气泡。流式期间不写入 messages 数组，避免每条
+  // delta 都触发整段消息列表重渲染 + react-markdown 重新解析整段 markdown，
+  // 恢复流畅的流式输出（commit 3fe7d15 的设计）。
+  const [draft, setDraft] = useState("");
   const [text, setText] = useState("");
   // 对话交互阶段（替代原 busy 的布尔判定，统一发送/停止按钮状态）：
   // idle=可发送，thinking=思考中(可终止)，streaming=流出中(可终止)，
@@ -201,6 +206,10 @@ export function ConversationPanel({
     msgIdRef.current += 1;
     return msgIdRef.current;
   }
+  // 当前正在流式的气泡 id：thinkId 是 send() 内闭包变量，渲染层访问不到，
+  // 故用 ref 持有。流式期间让渲染层跳过该 messages 节点（被 trailing 接管），
+  // reply / done / abort 时清空，渲染层恢复显示该气泡承载最终回复。
+  const streamingBubbleIdRef = useRef<number | null>(null);
   // 对话流并发控制：取消上一轮仍在后台读取的 SSE（文字已显示但卡片抽取等仍在跑），
   // 避免上一轮 done 的 finally 误把本轮 busy 解禁；同时用 sendId 判定"本轮是否仍是当前轮"。
   const convAbortRef = useRef<AbortController | null>(null);
@@ -272,7 +281,7 @@ export function ConversationPanel({
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "instant" as ScrollBehavior });
-  }, [messages]);
+  }, [messages, draft]);
 
   function stripCardFence(t: string): string {
     const i = t.search(/```json|```/i);
@@ -319,6 +328,7 @@ export function ConversationPanel({
 
     // 跨 try/catch/finally 共享：占位气泡 id、累积流式文本、后端正式回复
     const thinkingId = nextMsgId();
+    streamingBubbleIdRef.current = thinkingId;
     let acc = "";
     let finalReply = "";
 
@@ -379,19 +389,24 @@ export function ConversationPanel({
             try {
               const delta = JSON.parse(data) as string;
               acc += delta;
-              // [问题1修复] 流式过程不再独立维护 draft：占位气泡的 content 字段就是
-              // 单一一份「流式正文」渲染源，避免与气泡内容叠加显示导致重复。
-              // 首个真实内容到达 → 把思考占位气泡转为正常流式气泡（convPhase 进入流出态）。
-              setMessages((m) =>
-                m.map((msg) =>
-                  msg.id === thinkingId && msg.isThinking
-                    ? { ...msg, isThinking: false, content: stripCardFence(acc) }
-                    : msg
-                )
-              );
+              const cleaned = stripCardFence(acc);
+              // 流式正文走独立的 draft state + 末尾 trailing 流式气泡渲染，
+              // 不再写入 messages 内的占位气泡 content。这样后续 delta 不触碰
+              // messages 数组，其他气泡 React.memo 全数命中，避免 react-markdown
+              // 每 token 重复解析整段 markdown，恢复流畅流式输出。
+              // 首个 delta 到达时：把思考占位气泡切到「isThinking:false, content:""」
+              // 状态——保留其在 messages 内的位置，但渲染层跳过（被 trailing 流式气泡替代）。
               if (convSendIdRef.current === mySendId && convPhaseRef.current === "thinking") {
                 updateConvPhase("streaming");
+                setMessages((m) =>
+                  m.map((msg) =>
+                    msg.id === thinkingId && msg.isThinking
+                      ? { ...msg, isThinking: false, content: "" }
+                      : msg
+                  )
+                );
               }
+              setDraft(cleaned);
             } catch {
               /* ignore */
             }
@@ -406,7 +421,28 @@ export function ConversationPanel({
             // [修正] AI 文字回复已完整下发后，本轮进入「后端落库/卡片抽取中」阶段，
             // 此期间仍禁用发送按钮（persisting），直到收到后端 event: persisted 才解禁。
             // 这彻底消除「文字已显示但后端事务未完」时发消息导致气泡消失、顺序错乱的窗口。
-            if (convSendIdRef.current === mySendId) updateConvPhase("persisting");
+            if (convSendIdRef.current === mySendId) {
+              // reply 到达 = 本轮流式正文结束：
+              // 1) 清空 draft → 移除末尾 trailing 流式气泡
+              // 2) 把 finalReply 写入思考占位气泡 content → 该气泡恢复显示承载最终回复
+              // 3) 清空 streamingBubbleIdRef → 渲染层不再跳过它，气泡正常显示
+              // 这样定型只在发生在这里一次，不会因后续 setMessages 重渲染而重复解析 markdown。
+              if (convPhaseRef.current === "streaming") updateConvPhase("persisting");
+              const replyText = finalReply;
+              setDraft("");
+              streamingBubbleIdRef.current = null;
+              setMessages((m) =>
+                m.map((msg) =>
+                  msg.id === thinkingId
+                    ? {
+                        ...msg,
+                        isThinking: false,
+                        content: replyText || stripCardFence(acc) || "好的，已收到。",
+                      }
+                    : msg
+                )
+              );
+            }
           } else if (event === "card") {
             // 卡片成功回传说明 DB 此刻可达，清掉任何残留错误横幅
             setError(null);
@@ -539,33 +575,36 @@ export function ConversationPanel({
         });
       }
 
-      // 本轮助手消息：优先使用后端 reply 事件下发的正式回复（兜底流式清理文本），
-      // 修复模型仅输出卡片 JSON 时气泡空白的问题。
-      // 兜底：当回复完全为空时使用默认文本，防止气泡消失。
-      // [关键] 直接更新本轮的 thinkingId 占位气泡，而不是新建一条消息，
-      // 避免占位气泡与正式消息重复、以及被 GEN_MESSAGE 事件再次追加导致错乱。
-      const bubbleText = finalReply || stripCardFence(acc) || "好的，已收到。";
-      let placeholderStillOpen = false;
-      setMessages((m) =>
-        m.map((msg) => {
-          if (msg.id === thinkingId) {
-            placeholderStillOpen = true;
-            return { ...msg, isThinking: false, content: bubbleText };
-          }
-          return msg;
-        })
-      );
-      // 理论上占位气泡必然存在（send 时已创建）；此处冗余兜底：若因异常未创建则补建一条。
-      if (!placeholderStillOpen) {
-        setMessages((m) => [
-          ...m,
-          {
-            id: nextMsgId(),
-            role: "assistant",
-            content: bubbleText,
-            created_at: new Date().toISOString(),
-          },
-        ]);
+      // 本轮助手消息定型：reply 事件已先一步完成定型（清空 draft + 写入 finalReply）。
+      // 此处仅在 reply 未送达（极少兼容情况，如旧后端）时做兜底定型，避免重复渲染。
+      // 无论 reply 是否送达，都要确保 draft 清空，防止残留 trailing 流式气泡。
+      setDraft("");
+      // reply 已先一步清空 ref 并定型；这里仅在 reply 丢失的极端兜底中再清一次。
+      if (!finalReply) {
+        const bubbleText = stripCardFence(acc) || "好的，已收到。";
+        let placeholderStillOpen = false;
+        streamingBubbleIdRef.current = null;
+        setMessages((m) =>
+          m.map((msg) => {
+            if (msg.id === thinkingId) {
+              placeholderStillOpen = true;
+              return { ...msg, isThinking: false, content: bubbleText };
+            }
+            return msg;
+          })
+        );
+        // 理论上占位气泡必然存在（send 时已创建）；此处冗余兜底：若因异常未创建则补建一条。
+        if (!placeholderStillOpen) {
+          setMessages((m) => [
+            ...m,
+            {
+              id: nextMsgId(),
+              role: "assistant",
+              content: bubbleText,
+              created_at: new Date().toISOString(),
+            },
+          ]);
+        }
       }
       // 对话完成后直接拉取 outputs 并注入 SWR 缓存，确保侧边栏即时更新
       if (currentId) {
@@ -580,12 +619,17 @@ export function ConversationPanel({
     } catch (e) {
       // 被新一轮发送主动取消 / 用户主动停止（AbortError）：属正常流程，不报错、不干扰新一轮状态。
       if (e instanceof DOMException && e.name === "AbortError") {
-        // 用户主动停止对话流：把本轮 thinking 占位气泡定型——保留已流式内容，
+        // 用户主动停止对话流：清空 draft + ref + 把已流式内容定型到 thinking 占位气泡。
+        // 兼容两种 abort 时机：
+        //   1) 思考期（isThinking=true，无 draft）→ 显示"（已停止生成）"
+        //   2) 流式期（isThinking=false，content=""，draft 有内容）→ 把 draft 累积文本写入
         // 若尚无任何正文则填充一句「已停止生成」，避免气泡永远卡在「正在思考…」。
         const accText = finalReply || stripCardFence(acc);
+        setDraft("");
+        streamingBubbleIdRef.current = null;
         setMessages((m) =>
           m.map((msg) => {
-            if (msg.id === thinkingId && msg.isThinking) {
+            if (msg.id === thinkingId) {
               return {
                 ...msg,
                 isThinking: false,
@@ -851,14 +895,19 @@ export function ConversationPanel({
   return (
     <div className="flex h-full flex-col bg-white">
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto [scrollbar-gutter:stable] px-6 py-[18px]">
-        {renderedMessages.map((m, i) => (
+        {renderedMessages.map((m, i) => {
+          // 流式期间：本轮 thinking 占位气泡的位置由末尾 trailing 流式气泡接管，
+          // 跳过渲染避免与 trailing 流式气泡重复显示。
+          // 流式结束后 draft 已清空 + streamingBubbleIdRef 清空，气泡恢复显示承载最终回复。
+          if (m.id === streamingBubbleIdRef.current && draft) return null;
+          return (
           <div
             key={m.id}
             data-turn={i + 1}
             className={`flex items-start gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}
           >
             {m.role === "assistant" ? (
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10">
+              <span className="-mt-[2px] flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/logo-orange.png" alt="AskBuddy" className="h-7 w-7 object-contain" />
               </span>
@@ -873,29 +922,31 @@ export function ConversationPanel({
                 m.role === "user" ? "items-end" : "items-start"
               }`}
             >
-              {m.meta?.references && m.meta.references.length > 0 && (
-                <div className="mb-1.5 flex flex-wrap gap-1">
-                  {m.meta.references.map((r, i) => (
-                    <span
-                      key={i}
-                      className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500"
-                    >
-                      <Link2 className="h-3 w-3" />
-                      {r.label} v{r.version}
-                    </span>
-                  ))}
-                </div>
-              )}
               {m.role === "user" ? (
                 <span className="inline-block whitespace-pre-wrap rounded-bl-[18px] rounded-br-[18px] rounded-tl-[18px] rounded-tr-[5px] bg-brand px-4 py-2.5 text-[15.75px] leading-relaxed text-white">
                   {m.content}
                 </span>
               ) : (
-                <span className="inline-block rounded-bl-[18px] rounded-br-[18px] rounded-tl-[5px] rounded-tr-[18px] bg-[#F9F8F5] px-4 py-2.5 text-[15.75px] leading-relaxed text-[#111111] ring-1 ring-[#1111111a] [word-break:break-word] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                <span className="inline-block rounded-bl-[18px] rounded-br-[18px] rounded-tl-[5px] rounded-tr-[18px] bg-[#F9F8F5] px-4 pb-2.5 pt-2 text-[15.75px] leading-relaxed text-[#111111] ring-1 ring-[#1111111a] [word-break:break-word] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                  {m.meta?.references && m.meta.references.length > 0 && (
+                    <div className="-mx-1 mb-2 flex flex-wrap gap-1">
+                      {m.meta.references.map((r, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500"
+                        >
+                          <Link2 className="h-3 w-3" />
+                          {r.label} v{r.version}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {m.isThinking ? (
                     // 思考占位态：仅显示三点动画，文案由右上角 phase 提示承载。
-                    <span className="flex items-center gap-1.5 text-[#78746C]">
-                      <span className="inline-flex gap-1">
+                    // 用与一行回复等高的容器（leading-relaxed 行高）把三点垂直居中，
+                    // 保证思考态气泡高度 = 一行回复高度。
+                    <span className="flex h-[1.625em] items-center text-[#78746C]">
+                      <span className="inline-flex items-center gap-1">
                         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#f66612] [animation-delay:-0.3s]" />
                         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#f66612] [animation-delay:-0.15s]" />
                         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#f66612]" />
@@ -931,8 +982,31 @@ export function ConversationPanel({
               )}
             </div>
           </div>
-        ))}
-        {messages.length === 0 && (
+          );
+        })}
+        {/* 末尾 trailing 流式气泡：仅在 SSE 流期间（draft 非空）渲染，承载流式正文。
+            draft state 变更只触发本单元重渲染，messages 数组不变 → 其他气泡 React.memo
+            全部命中 → 避免每次 delta 都触发 react-markdown 重新解析整段 markdown，
+            恢复流畅的流式输出。 */}
+        {draft && (
+          <div
+            data-turn="streaming"
+            className="flex items-start gap-3"
+          >
+            <span className="-mt-[2px] flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo-orange.png" alt="AskBuddy" className="h-7 w-7 object-contain" />
+            </span>
+            <div className="flex min-w-0 max-w-[80%] flex-col items-start">
+              <span className="inline-block rounded-bl-[18px] rounded-br-[18px] rounded-tl-[5px] rounded-tr-[18px] bg-[#F9F8F5] px-4 py-2.5 text-[15.75px] leading-relaxed text-[#111111] ring-1 ring-[#1111111a] [word-break:break-word] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                <MarkdownRenderer content={draft} disableMermaid />
+                <span className="ml-0.5 inline-block h-4 w-1.5 translate-y-0.5 animate-pulse bg-brand" />
+              </span>
+              <span className="mt-1 px-1 text-[11px] text-slate-400">生成中…</span>
+            </div>
+          </div>
+        )}
+        {messages.length === 0 && !draft && (
           <div className="py-10 text-center text-sm text-slate-400">
             发送第一条消息，开始创建你的需求。
           </div>

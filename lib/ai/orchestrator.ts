@@ -107,7 +107,8 @@ export async function extractCard(
 export async function runGeneration(
   taskType: AITaskType,
   requirementId: string,
-  input?: Record<string, unknown>
+  input?: Record<string, unknown>,
+  signal?: AbortSignal
 ): Promise<ReadableStream<string>> {
   const prompt = getPrompt(taskType);
   const ctx = await buildStepContext(requirementId, taskType, input);
@@ -132,7 +133,7 @@ export async function runGeneration(
     },
   ];
 
-  return streamAI(taskType, messages);
+  return streamAI(taskType, messages, signal);
 }
 
 // 通用步骤结果写回：按 taskType 解析并落库。

@@ -461,6 +461,16 @@ export function RequirementShell({
                 );
                 globalMutate(`/api/requirements/${requirementId}/conversation`);
               } catch { /* ignore */ }
+            } else if (eventType === "gen_stopped") {
+              // 用户主动点「终止」：后端 AI 调用已停止，full 为终止时刻内容并已落库。
+              // 主动刷新 steps/outputs，使右侧栏与 SWR 缓存都拿到「停在半途」的文档内容
+              // （文档保留不消失），同时退出「可终止」态、恢复可发送由 DOC_GEN_END 负责。
+              try {
+                const payload = JSON.parse(raw) as { step?: string; version?: number };
+                void payload;
+              } catch { /* ignore */ }
+              globalMutate(`/api/requirements/${requirementId}/steps`);
+              globalMutate(`/api/requirements/${requirementId}/outputs`);
             } else if (eventType === "error") {
               // 后端生成流水线异常（如 EMAXCONNSESSION）：中断 SSE 读取，抛错给外层 catch
               let msg = "服务端生成异常";
@@ -502,7 +512,21 @@ export function RequirementShell({
           notifyOutputComplete(req?.title ?? "", label, requirementId);
         }
       } catch (e) {
-        if (!(e instanceof DOMException && e.name === "AbortError")) {
+        if (e instanceof DOMException && e.name === "AbortError") {
+          // 用户主动点「终止」：前端读取流被中断。generationContent 已停在终止时刻内容，
+          // 此处主动刷新 outputs/steps，确保右侧栏与 SWR 缓存都拿到「用户点停时已生成」的
+          // 文档（后端已落库），文档保留不消失、不继续往前生成。
+          // 后端因 req.signal.aborted 落库终止内容存在网络异步延迟，稍后二次刷新兜底。
+          try {
+            await refreshOutputs();
+            await refreshSteps();
+            await new Promise((r) => setTimeout(r, 600));
+            await refreshOutputs();
+            await refreshSteps();
+          } catch {
+            /* ignore */
+          }
+        } else {
           console.error("生成失败:", e);
         }
         // re-throw 让调用方（handleProceed / processChangeQueue）能捕获并做降级/重试入口

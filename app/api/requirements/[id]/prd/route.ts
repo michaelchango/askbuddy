@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     message: body?.message ?? "",
     // 变更模式：携带变更点，生成管线切换为"基于现有文档精准修改"
     changeNote: mode === "change" ? (body?.changeNote ?? "") : "",
-  });
+  }, req.signal);
   const encoder = new TextEncoder();
   let full = "";
 
@@ -67,6 +67,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         const result = await finalizeStep("prd_writing", params.id, full);
         const version = (result.result as { version?: number })?.version;
         const resultType = result.type;
+
+        // 【终止行为修复】用户主动点「终止」使 req.signal aborted，后端 AI 调用已停止，
+        // full 即为「终止时刻」已生成的文档内容（finalizeStep 已落库，文档保留不消失）。
+        // 此时文档不完整，不应下发「已完成/可确认」信号，仅通知前端「已停在半途」。
+        if (req.signal.aborted) {
+          // 终止时仍刷新「最近更新」，并更新版本号，使 SWR 能拉到终止时刻的内容。
+          if (version != null) {
+            await db.updateWhere("requirement_steps", { requirement_id: params.id, step: "prd_writing" }, { output_version: version }).catch(() => {});
+          }
+          await touchRequirement(params.id).catch(() => {});
+          send("gen_stopped", { step: "prd_writing", version });
+          return;
+        }
 
         // 将版本号同步写回 requirement_steps.output_version
         if (version != null) {

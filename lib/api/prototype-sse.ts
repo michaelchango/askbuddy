@@ -10,14 +10,15 @@ import { touchRequirement } from "@/lib/services/requirements";
 
 export async function prototypeSSE(
   requirementId: string,
-  opts: StreamPrototypeOpts
+  opts: StreamPrototypeOpts,
+  signal?: AbortSignal
 ): Promise<Response> {
   const isEdit = !!(opts.baseVersionId || opts.changeNote);
   const taskType = isEdit ? "prototype_edit" : "prototype_gen";
   // 原型属于 design 组的子产物，复用 design 步骤的「生成中」标记（跨页面/会话持久化），
   // 并同时写入子阶段标识 design_sub_phase='prototype'，供重进页面时区分「方案文档/原型」生成中
   await setStepGenerating(requirementId, "design", true, "prototype").catch(() => {});
-  const stream = await streamPrototype(requirementId, opts);
+  const stream = await streamPrototype(requirementId, { ...opts, signal });
   const encoder = new TextEncoder();
   let full = "";
 
@@ -59,8 +60,30 @@ export async function prototypeSSE(
         for (;;) {
           const { value, done } = await reader.read();
           if (done) break;
+          // 用户主动点「终止」使 req.signal aborted：立即停止读取（后台 AI 调用也已停止），
+          // full 即为「终止时刻」已生成的原型内容，不再往前生成。
+          if (signal?.aborted) break;
           full += value;
           send("delta", full);
+        }
+
+        // 【终止行为修复】用户主动点「终止」：后端 AI 调用已停止，full 为终止时刻内容。
+        // 仍把已生成部分落库（原型保留不消失），但不下发「已完成/可确认」信号，
+        // 仅下发 gen_stopped 通知前端「已停在半途」。
+        if (signal?.aborted) {
+          const { html, structure } = extractPrototype(full);
+          if (html && html.trim()) {
+            const saved = await savePrototypeVersion(
+              requirementId,
+              { html, structure, model: AI_TASK_MODEL[taskType] },
+              opts.baseVersionId
+            );
+            await touchRequirement(requirementId).catch(() => {});
+            send("gen_stopped", { step: "design", subPhase: "prototype", version: saved.version });
+          } else {
+            send("gen_stopped", { step: "design", subPhase: "prototype", version: undefined });
+          }
+          return;
         }
 
         const { html, structure } = extractPrototype(full);
