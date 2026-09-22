@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "prebuild": "node scripts/vercel-diag.cjs && tsx scripts/db-setup-cloudbase.ts",
+    "prebuild": "tsx scripts/db-setup-cloudbase.ts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

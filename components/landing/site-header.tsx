@@ -47,7 +47,7 @@ export function SiteHeader() {
             登录
           </Link>
           <Link
-            href="/login?mode=register"
+            href="/try"
             className="flex h-[38px] items-center rounded-[6px] bg-[#f66612] px-[18px] text-[18px] font-semibold text-white shadow-[0_4px_6px_-4px_rgba(246,102,18,0.25),0_10px_15px_-3px_rgba(246,102,18,0.25)] transition-colors hover:bg-[#D85A10]"
           >
             免费开始
@@ -105,7 +105,7 @@ export function SiteHeader() {
                 登录
               </Link>
               <Link
-                href="/login?mode=register"
+                href="/try"
                 className="flex-1 rounded-[9px] bg-[#f66612] py-2.5 text-center text-[15px] font-semibold text-white"
               >
                 免费开始
