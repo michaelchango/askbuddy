@@ -379,8 +379,10 @@ export default function ProjectsPage() {
   // 需求只用于项目卡片上的「N 个需求」计数与最近更新时间，取最近 REQ_PAGE_SIZE 条即可。
   // 原本一次拉全量，数据量随使用线性增长；生产环境前端在海外、数据库在境内，
   // 每次跨网关 SQL 往返约 1.7s，全量拉取会越来越慢。
+  // 只传 limit、不传 page：本页没有翻页控件，不需要 total，
+  // 省下统计总数那次跨网关往返（约 1.7s）。
   const { data: requirements = [] } = useSWR<Requirement[]>(
-    `/api/requirements?page=1&pageSize=${REQ_PAGE_SIZE}`,
+    `/api/requirements?limit=${REQ_PAGE_SIZE}`,
     fetcher
   );
   const reqCount = new Map<string, number>();

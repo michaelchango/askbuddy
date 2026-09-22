@@ -19,8 +19,15 @@ const MAX_PAGE_SIZE = 100;
  * 背景：概览页 / 项目列表页 / 项目需求列表页原本都是一次拉全量需求再前端切片，
  * 数据量随使用线性增长；而生产环境前端部署在海外、数据库在境内，
  * 每次跨网关 SQL 往返约 1.7s，无上限的全量拉取会越来越慢。
+ *
+ * 关于 withTotal：统计总数本身是一次额外的跨网关往返（约 1.7s）。
+ * 只有真正需要翻页控件的页面才传 page 参数；只想"取前 N 条"的页面（概览页、
+ * 项目列表页）只传 limit，此时不查 total —— 否则省下的数据量收益还抵不过
+ * 多出来这次查询的代价。
  */
-function parsePaging(sp: URLSearchParams): { page: number; pageSize: number; offset: number } | null {
+function parsePaging(
+  sp: URLSearchParams
+): { page: number; pageSize: number; offset: number; withTotal: boolean } | null {
   const limitParam = sp.get("limit");
   const pageParam = sp.get("page");
   const pageSizeParam = sp.get("pageSize");
@@ -31,7 +38,7 @@ function parsePaging(sp: URLSearchParams): { page: number; pageSize: number; off
     MAX_PAGE_SIZE
   );
   const page = Math.max(Number(pageParam ?? 1) || 1, 1);
-  return { page, pageSize, offset: (page - 1) * pageSize };
+  return { page, pageSize, offset: (page - 1) * pageSize, withTotal: pageParam != null };
 }
 
 /** 分页响应的公共字段：data 仍是数组，老 fetcher（d.ok ? d.data : []）不受影响。 */
@@ -64,13 +71,14 @@ export async function GET(req: NextRequest) {
       const data = await listRequirements(projectId);
       return NextResponse.json({ ok: true, data });
     }
-    const [data, total] = await Promise.all([
-      listRequirements(projectId, { limit: paging.pageSize, offset: paging.offset }),
-      countRequirements(projectId),
-    ]);
-    return NextResponse.json(
-      paged(data, total, paging.page, paging.pageSize)
-    );
+    const data = await listRequirements(projectId, {
+      limit: paging.pageSize,
+      offset: paging.offset,
+    });
+    // 未传 page 时不要为算 total 多跑一次跨网关查询
+    if (!paging.withTotal) return NextResponse.json({ ok: true, data });
+    const total = await countRequirements(projectId);
+    return NextResponse.json(paged(data, total, paging.page, paging.pageSize));
   }
 
   // 跨项目列表（概览页「最近需求」）。
@@ -79,12 +87,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, data });
   }
 
-  // 先取项目（进程内缓存），再并行拿当页数据与总数，
-  // 两次调用内部的 listProjects 共用同一份缓存，只真正查一次。
-  const [data, total] = await Promise.all([
-    listRequirementsForOwner(user.uid, { limit: paging.pageSize, offset: paging.offset }),
-    countRequirementsForOwner(user.uid),
-  ]);
+  // 先取项目（进程内缓存），当页数据与总数内部的 listProjects 共用同一份缓存。
+  const data = await listRequirementsForOwner(user.uid, {
+    limit: paging.pageSize,
+    offset: paging.offset,
+  });
+  // 未传 page 时不要为算 total 多跑一次跨网关查询
+  if (!paging.withTotal) return NextResponse.json({ ok: true, data });
+  const total = await countRequirementsForOwner(user.uid);
   return NextResponse.json(paged(data, total, paging.page, paging.pageSize));
 }
 

@@ -214,8 +214,10 @@ export default function DashboardOverview() {
   // 概览页只展示「最近需求」（前 5 条）与项目卡片的粗略计数，
   // 原本一次拉全量需求再前端切片 —— 数据量随使用无限增长，而跨网关 SQL 往返
   // 在生产环境约 1.7s/次，全量拉取会越来越慢。改为只取最近 REQ_PAGE_SIZE 条。
+  // 只传 limit、不传 page：概览页没有翻页控件，不需要 total，
+  // 省下统计总数那次跨网关往返（约 1.7s）。
   const { data: requirements = [], mutate: mutateRequirements } = useSWR<Requirement[]>(
-    `/api/requirements?page=1&pageSize=${REQ_PAGE_SIZE}`,
+    `/api/requirements?limit=${REQ_PAGE_SIZE}`,
     fetcher
   );
 
