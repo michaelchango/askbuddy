@@ -99,7 +99,7 @@ export default function HomePage() {
 
             <div className="mt-9 flex justify-center">
               <Link
-                href="/login?mode=register"
+                href="/try"
                 className="flex items-center rounded-[13px] bg-[#f66612] px-7 py-3.5 text-[18px] font-semibold text-white shadow-[0_4px_6px_-4px_rgba(246,102,18,0.25),0_10px_15px_-3px_rgba(246,102,18,0.25)] transition-colors hover:bg-[#D85A10]"
               >
                 免费开始使用
@@ -306,7 +306,7 @@ export default function HomePage() {
 
             <div className="mt-10 flex justify-center">
               <Link
-                href="/login?mode=register"
+                href="/try"
                 className="flex items-center rounded-[13px] bg-[#f66612] px-9 py-4 text-[20.25px] font-semibold text-white shadow-[0_4px_6px_-4px_rgba(246,102,18,0.3),0_10px_15px_-3px_rgba(246,102,18,0.3)] transition-colors hover:bg-[#D85A10]"
               >
                 免费注册
