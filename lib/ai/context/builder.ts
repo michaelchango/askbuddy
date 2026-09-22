@@ -2,6 +2,8 @@
 import { db } from "@/lib/db";
 import { listConversations } from "@/lib/services/conversations";
 import { getRequirement } from "@/lib/services/requirements";
+import { retrieveRelevantKnowledge } from "@/lib/services/knowledge";
+import type { KnowledgeRef } from "@/lib/schemas/knowledge";
 import type { AITaskType } from "../models";
 import type { TaskContext, RequirementCardData, ChatMessage } from "../types";
 import { assertNoPrdUpstream } from "./ad2";
@@ -16,6 +18,8 @@ export interface StepContext {
   upstream: Record<string, string>;
   // 变更模式：当前步骤已生成的文档内容（用于"基于现有文档精准修改"）
   existingDoc?: string;
+  // M4 知识复利：检索到的相关知识（注入 prompt 并溯源）
+  knowledge: KnowledgeRef[];
 }
 
 // 基础上下文（v1 兼容，对话访谈等无上游场景使用）。
@@ -73,6 +77,14 @@ export async function buildStepContext(
     existingDoc = await loadExistingDoc(requirementId, taskType);
   }
 
+  // M4 知识复利：并行召回相关知识（失败返回 []，不阻断主流程）。
+  // query = 用户本轮消息 + 卡片标题/目标/范围 + 步骤名，截断 500 字符。
+  const queryText = buildKnowledgeQuery(input, card, taskType);
+  const knowledge = await retrieveRelevantKnowledge(
+    req?.projectId ?? "",
+    queryText
+  );
+
   return {
     requirementId,
     taskType,
@@ -81,7 +93,28 @@ export async function buildStepContext(
     history,
     upstream,
     existingDoc,
+    knowledge,
   };
+}
+
+/** 拼知识检索 query：用户消息 + 卡片关键字段 + 步骤名（截断 500）。 */
+function buildKnowledgeQuery(
+  input: Record<string, unknown> | undefined,
+  card: Partial<RequirementCardData> | undefined,
+  taskType: AITaskType
+): string {
+  const parts: string[] = [];
+  const msg = (input?.message as string) ?? (input?.changeNote as string) ?? "";
+  if (msg.trim()) parts.push(msg.trim());
+  if (card) {
+    const c = card as Record<string, unknown>;
+    for (const k of ["title", "background", "scope", "targetUsers", "painPoints"]) {
+      const v = c[k];
+      if (typeof v === "string" && v.trim()) parts.push(v.trim());
+    }
+  }
+  parts.push(`步骤:${taskType}`);
+  return parts.join(" ").slice(0, 500);
 }
 
 // 读取当前步骤自身已生成的文档内容（变更模式专用，截断保护）

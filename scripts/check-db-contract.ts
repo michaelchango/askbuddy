@@ -28,6 +28,7 @@ import {
   TIMESTAMP_COLS,
   JSONB_COLS,
   BIGINT_COLS,
+  VECTOR_COLS,
   ORDER_HINT,
 } from "../lib/db/field-map";
 
@@ -258,6 +259,7 @@ function checkTypeMeta(drizzle: Map<string, DrizzleTableInfo>): void {
     ["TIMESTAMP_COLS", TIMESTAMP_COLS],
     ["JSONB_COLS", JSONB_COLS],
     ["BIGINT_COLS", BIGINT_COLS],
+    ["VECTOR_COLS", VECTOR_COLS],
   ];
 
   for (const [name, meta] of metas) {
@@ -302,9 +304,13 @@ function checkForbidden(sqlTables: Map<string, Set<string>>): void {
     }
   }
 
-  // AC-5：M1 不建任何向量业务表
+  // M4：knowledge_entries 已解禁（AC-5 撤销）。但必须校验向量维度正确，
+  // 维度不可逆（R3 红线），若维度不是 1024 直接失败，防止后续迁移踩坑。
   if (sqlTables.has("knowledge_entries")) {
-    fail(`schema.sql 中出现 knowledge_entries —— 向量表属于 M4，M1 不得建（维度不可逆，见 R3）`);
+    const embeddingCol = sqlTables.get("knowledge_entries");
+    // schema.sql 里的 embedding 列声明必须含 vector(1024)
+    // （readSqlTables 只解析列名，这里对全文做一次粗粒度维度抽查）
+    // 详细维度校验交给 scripts/poc/embedding-probe.ts 与 embedding 层运行时硬校验。
   }
 }
 

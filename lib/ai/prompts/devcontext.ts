@@ -5,6 +5,7 @@
 //   - PRD 面向人，允许「（待补充）」占位；
 //   - DevContext 面向机器（AI 编码工具），**没有任何依据的 section 直接不输出该 key**，绝不允许空数组/空对象/占位文字。
 import type { PromptModule } from "./types";
+import { renderKnowledgeBlock } from "./knowledge-render";
 
 // buildUser 对每条上游产物的防御性截断上限（builder.ts 已按 taskType 截断，
 // 此处仅作为兜底，避免极端情况下超长上下文把 json 围栏挤出窗口）。
@@ -68,7 +69,7 @@ id 命名强制规范（用于交叉引用）：业务规则 \`BR-001\` 起、�
 - \`context_ids\`：能定位到上游条目的稳定标识。如卡片字段名 \`card.painPoints\`、feature 的 \`id\`/\`name\`、user story 的 \`id\`、原型页 \`page.id\`、调研 \`feature.id\`。
 - \`conversation_turn\`：若某条结论来自对话历史，填该轮次序号（从 1 计）；无法对应则填 \`null\`。
 - \`decision_id\`：当前一律 \`null\`（M3 接入 decisions 表）。
-- \`knowledge_ids\`：当前一律 \`[]\`（M4 接入知识库）。
+- \`knowledge_ids\`：若本条内容依据了下文【项目知识】中的某条知识，填该条知识的 id（见知识段每条的 \`[id=xxx]\` 标注）；未依据任何知识则填 \`[]\`。**不得编造知识 id**。
 - \`confirmed_by\`：恒为 \`"ai_auto"\`；\`confirmed_at\`：\`null\`。
 
 # 输出格式
@@ -100,6 +101,18 @@ id 命名强制规范（用于交叉引用）：业务规则 \`BR-001\` 起、�
         .map((h, i) => `（${(i + 1)}）${h.role === "user" ? "用户" : "助手"}：${h.content.slice(0, 300)}`)
         .join("\n");
       parts.push("【对话历史（最近 15 轮，用于 _source.conversation_turn 标注）】\n" + hist);
+    }
+
+    // M4 知识：渲染带 [id=xxx] 标注的知识段，供 _source.knowledge_ids 溯源。
+    if (vars.knowledge && vars.knowledge.length) {
+      const knowledgeLines = vars.knowledge.map((k) => {
+        const label = { rule: "业务规则", term: "术语", decision: "决策", constraint: "约束" }[k.category] ?? k.category;
+        return `[id=${k.id}] 【${label}】${k.title}\n${k.content.slice(0, 2000)}`;
+      });
+      parts.push(
+        "【项目知识（历史沉淀，请优先遵循；条目含 [id=xxx]，_source.knowledge_ids 用它溯源）】\n" +
+        knowledgeLines.join("\n\n")
+      );
     }
 
     // 重生成模式：基于既有 DevContext JSON 做精准修改，而非从零重写。

@@ -16,6 +16,8 @@ build/
 *.tsbuildinfo
 
 # 本地运行日志
+dev.log
+dev.err
 dev_server.log
 dev_server.err
 tsc_check.log

@@ -19,6 +19,7 @@ const DEFAULTS = {
   devcontext: "hy3-preview", // DevContext 结构化 JSON 生成（长结构、需强指令遵循）
   prototype_gen: "hy3-preview", // 原型 HTML 生成（需要更强生成能力）
   prototype_edit: "hy3-preview", // 原型对话式修改
+  knowledge_extract: "hy3", // 知识沉淀抽取（从 decisions 抽取规则/术语/决策/约束）
 } as const;
 
 const ENV_KEYS: Record<keyof typeof DEFAULTS, string> = {
@@ -31,6 +32,7 @@ const ENV_KEYS: Record<keyof typeof DEFAULTS, string> = {
   devcontext: "AI_MODEL_DEVCONTEXT",
   prototype_gen: "AI_MODEL_PROTOTYPE_GEN",
   prototype_edit: "AI_MODEL_PROTOTYPE_EDIT",
+  knowledge_extract: "AI_MODEL_KNOWLEDGE_EXTRACT",
 };
 
 const modelCache: Partial<Record<keyof typeof DEFAULTS, string>> = {};
@@ -53,3 +55,10 @@ export const AI_TASK_MODEL: { [K in keyof typeof DEFAULTS]: string } = new Proxy
 );
 
 export type AITaskType = keyof typeof DEFAULTS;
+
+// ---------------------------------------------------------------------------
+// Embedding 模型（M4 知识复利）
+// ---------------------------------------------------------------------------
+// 向量化不走 CloudBase 生成模型，而是走腾讯 TokenHub 的向量接口（独立密钥）。
+// 模型名的唯一来源是 lib/ai/embedding.ts 的 EMBEDDING_MODEL（读 EMBED_MODEL 环境变量），
+// 本文件不再重复定义，避免两处默认值漂移。

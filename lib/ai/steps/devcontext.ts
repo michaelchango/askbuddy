@@ -6,6 +6,7 @@
 // 不改 runGeneration（见 M2 设计 §「生成管线」）。
 import { getPrompt } from "../prompts";
 import { callAI } from "../client";
+import { db } from "@/lib/db";
 import type { ChatMessage } from "@/lib/ai/types";
 import { extractDevContextJson } from "../parse";
 import { DevContextBodySchema, type DevContextBody, type SectionKey } from "@/lib/schemas/devcontext";
@@ -16,8 +17,10 @@ import {
   detectUpstreamSignals,
   type CompletenessReport,
   type ConsistencyIssue,
+  type SourceResolvers,
 } from "@/lib/services/devcontext-validate";
 import { saveDevContext } from "@/lib/services/devcontext";
+import { filterKnowledgeIds } from "./knowledge-trace";
 
 export type DevContextTrigger = "prd_writing" | "manual" | "change_analysis";
 
@@ -166,6 +169,7 @@ export async function runDevContextGeneration(
         upstream: ctx.upstream,
         changeNote: opts.changeNote,
         existingDoc: ctx.existingDoc,
+        knowledge: ctx.knowledge,
       }),
     },
   ];
@@ -199,10 +203,27 @@ export async function runDevContextGeneration(
     throw new Error(`DevContext 生成失败（已重试 ${maxRetry} 次）：${(lastErr as Error)?.message ?? String(lastErr)}`);
   }
 
+  // ①.5 幻觉 id 白名单过滤：_source.knowledge_ids 只保留本次注入集合内的 id，
+  // 模型编造的知识 id 直接丢弃（否则溯源会打红 M3 校验）。
+  body = filterKnowledgeIds(body, ctx.knowledge ?? []);
+
   // ② 三层校验：完整度 + 一致性（决定是否 confirmed）
   const signals = await detectUpstreamSignals(requirementId);
   const score: CompletenessReport = completenessScore(body, signals);
-  const issues: ConsistencyIssue[] = await checkConsistency(body, requirementId, opts.resolvers);
+  // 注入默认 knowledgeExists resolver（校验 knowledge_ids 真实存在，允许 deprecated）。
+  // 若调用方未提供完整 SourceResolvers，则补全 contextExists/maxConversationTurn 默认值。
+  const base = opts.resolvers ?? {
+    contextExists: async () => true,
+    maxConversationTurn: async () => 0,
+  };
+  const resolvers: SourceResolvers = {
+    ...base,
+    knowledgeExists: base.knowledgeExists ?? (async (id: string) => {
+      const row = await db.get("knowledge_entries", id).catch(() => null);
+      return Boolean(row);
+    }),
+  };
+  const issues: ConsistencyIssue[] = await checkConsistency(body, requirementId, resolvers);
 
   const hasError = issues.some((i) => i.level === "error");
   const status: "draft" | "confirmed" =

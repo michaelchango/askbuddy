@@ -146,14 +146,21 @@ server.tool(
   }
 );
 
-// ---------- 知识库（M2 占位） ----------
+// ---------- 知识库（M4 知识复利） ----------
 
 server.tool(
   "search_knowledge",
-  "在 AskBuddy 知识库中检索参考资料（M2 占位：当前返回空结果，待后续版本接入）。",
-  { query: z.string().describe("检索关键词") },
-  async ({ query }) => {
-    const data = await callPlatform(`/api/mcp/knowledge/search?q=${encodeURIComponent(query)}`);
+  "在 AskBuddy 项目知识库中语义检索已沉淀的知识条目（业务规则/术语/决策/约束）。需传入 projectId 与 query。",
+  {
+    projectId: z.string().describe("项目 ID"),
+    query: z.string().describe("检索查询（语义检索，可自然语言）"),
+    topK: z.number().int().min(1).max(20).optional().describe("返回条数，默认 8"),
+  },
+  async ({ projectId, query, topK }) => {
+    const data = await callPlatform(`/api/mcp/knowledge/search`, {
+      method: "POST",
+      body: { projectId, query, topK: topK ?? 8 },
+    });
     return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
   }
 );

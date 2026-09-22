@@ -165,7 +165,7 @@ MCP Server 当前提供 **13 个工具（v2.0.0）**。除 `list_projects` / `li
 | `dev_context_data_structures` | 仅取「数据模型」段 | `GET /api/mcp/requirement/{id}/dev-context?section=data_structures` | `{ section, content, version, status }` |
 | `dev_context_api_specs` | 仅取「接口规范」段（api_requirements） | `GET /api/mcp/requirement/{id}/dev-context?section=api_requirements` | `{ section, content, version, status }` |
 | `dev_context_acceptance_criteria` | 仅取「验收标准」段 | `GET /api/mcp/requirement/{id}/dev-context?section=acceptance_criteria` | `{ section, content, version, status }` |
-| `search_knowledge` | 知识库检索（M2 占位） | `GET /api/mcp/knowledge/search?q=` | `{ query, results: [], notice }` |
+| `search_knowledge` | 知识库语义检索（项目级，M4） | `POST /api/mcp/knowledge/search`（`{ projectId, query, topK }`） | `{ query, results: [{id,title,content,category,score}], degraded }` |
 
 > 产物未生成时，对应接口返回 `not_found`，MCP 工具会如实返回错误文本。
 > `requirement_dev_context` 与 4 个 `dev_context_*` 工具共享同一路由，按 `section` 参数返回整份或单段；
@@ -216,7 +216,7 @@ AI 会自行调用 `requirement_prd` / `requirement_prototype` / `requirement_re
 ```
 mcp/
 ├── server.ts          # MCP Server 入口，注册 13 个 tool（v2.0.0，stdio 传输）
-├── client.ts          # 平台 HTTP 客户端，封装 callPlatform（携带 PAT）
+├── client.ts          # 平台 HTTP 客户端，封装 callPlatform（携带 PAT，支持 GET/POST）
 ├── package.json       # 脚本：npm start / npm run build
 └── tsconfig.json     # NodeNext 编译配置
 ```

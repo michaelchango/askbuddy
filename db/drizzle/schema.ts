@@ -18,6 +18,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   check,
+  customType,
   index,
   integer,
   jsonb,
@@ -32,6 +33,27 @@ import {
 
 /** 所有时间列的统一定义，避免逐列重复写 withTimezone。 */
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
+
+/**
+ * pgvector 的 vector(N) 列类型（drizzle-orm 0.33 无原生 vector，用 customType 补）。
+ * 业务侧以 number[] 传递；toDriver 序列化为 '[0.1,0.2]'（pgvector 文本字面量）。
+ * 维度由 EMBEDDING_DIMENSIONS（1024）决定，不可逆（R3 红线），见 db/schema.sql。
+ */
+const vector = customType<{ data: number[]; driverData: string; config: { dimensions: number } }>({
+  dataType: (config) => `vector(${config?.dimensions ?? 1024})`,
+  toDriver: (v: number[]) => `[${v.join(",")}]`,
+  fromDriver: (v: string) => {
+    const s = v.trim();
+    if (s.startsWith("[") && s.endsWith("]")) {
+      try {
+        return JSON.parse(s) as number[];
+      } catch {
+        return v as unknown as number[];
+      }
+    }
+    return v as unknown as number[];
+  },
+});
 
 // ---------------------------------------------------------------------------
 // 项目
@@ -583,5 +605,47 @@ export const docSections = pgTable(
   (t) => ({
     idxReq: index("idx_docsec_req").on(t.requirementId, t.targetType, t.version),
     ckDocsecTarget: check("ck_docsec_target", sql`${t.targetType} IN ('research','solution','prd')`),
+  })
+);
+
+// ---------------------------------------------------------------------------
+// M4 · 知识复利（项目级知识库 + 语义检索）
+// ---------------------------------------------------------------------------
+// 沉淀已确立的业务规则/术语/决策/约束，生成时经向量检索注入上下文并溯源。
+// embedding 用 vector(1024)（EMBEDDING_DIMENSIONS），软删置 NULL 禁参与检索。
+export const knowledgeEntries = pgTable(
+  "knowledge_entries",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    /** 语义向量；软删（deprecated）后置 NULL。 */
+    embedding: vector("embedding", { dimensions: 1024 }),
+    /** rule | term | decision | constraint */
+    category: text("category").notNull().default("rule"),
+    /** manual | decision */
+    sourceType: text("source_type").notNull().default("manual"),
+    /** 来源引用（需求 id / 决策 id 的可读描述） */
+    sourceRef: text("source_ref"),
+    /** 沉淀上游：M3 decisions.id（三道去重闸之一） */
+    sourceDecisionId: text("source_decision_id"),
+    /** 内容去重指纹（sha256，normalize 后） */
+    sourceHash: text("source_hash"),
+    /** active | deprecated（软删） */
+    status: text("status").notNull().default("active"),
+    accessCount: integer("access_count").notNull().default(0),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    idxProject: index("idx_know_project").on(t.projectId, t.status, t.updatedAt.desc()),
+    idxHash: index("idx_know_hash").on(t.projectId, t.sourceHash),
+    idxDecision: index("idx_know_decision").on(t.sourceDecisionId),
+    ckCategory: check("ck_know_category", sql`${t.category} IN ('rule','term','decision','constraint')`),
+    ckSourceType: check("ck_know_sourcetype", sql`${t.sourceType} IN ('manual','decision')`),
+    ckStatus: check("ck_know_status", sql`${t.status} IN ('active','deprecated')`),
   })
 );

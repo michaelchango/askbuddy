@@ -8,6 +8,7 @@ import { prdWritingPrompt } from "./prd-writing";
 import { devcontextPrompt } from "./devcontext";
 import { prototypeGenPrompt } from "./prototype-gen";
 import { prototypeEditPrompt } from "./prototype-edit";
+import { knowledgeExtractPrompt } from "./knowledge-extract";
 
 const registry: Record<string, PromptModule> = {
   dialoguing: dialoguingPrompt,
@@ -17,6 +18,7 @@ const registry: Record<string, PromptModule> = {
   devcontext: devcontextPrompt,
   prototype_gen: prototypeGenPrompt,
   prototype_edit: prototypeEditPrompt,
+  knowledge_extract: knowledgeExtractPrompt,
 };
 
 export function getPrompt(taskType: AITaskType): PromptModule {

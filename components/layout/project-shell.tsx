@@ -11,6 +11,7 @@ import {
   MonitorPlay,
   ScrollText,
   Settings,
+  Library,
 } from "lucide-react";
 import type { Project, Requirement } from "@/types";
 import { UserContext, type ShellUser } from "@/components/layout/dashboard-shell";
@@ -58,6 +59,13 @@ const PROJECT_NAV = [
     href: (id: string) => `/dashboard/projects/${id}/docs`,
     match: (p: string, base: string) => p.startsWith(`${base}/docs`),
     icon: <ScrollText className="h-[18px] w-[18px]" />,
+  },
+  {
+    key: "knowledge",
+    label: "知识库",
+    href: (id: string) => `/dashboard/projects/${id}/knowledge`,
+    match: (p: string, base: string) => p.startsWith(`${base}/knowledge`),
+    icon: <Library className="h-[18px] w-[18px]" />,
   },
   {
     key: "settings",
