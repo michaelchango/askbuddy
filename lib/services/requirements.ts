@@ -36,24 +36,48 @@ export const EMPTY_CARD: RequirementCard = {
 const LIST_TTL_MS = 5000;
 
 export const listRequirements = memo(
-  (projectId: string) => `listRequirements:${projectId}`,
+  (projectId: string, opts?: ListRequirementsOpts) =>
+    `listRequirements:${projectId}:${opts?.limit ?? "all"}:${opts?.offset ?? 0}`,
   LIST_TTL_MS,
-  async (projectId: string): Promise<Requirement[]> => {
+  async (projectId: string, opts?: ListRequirementsOpts): Promise<Requirement[]> => {
     // 下推：完整命中 idx_req_project (project_id, updated_at DESC) WHERE archived_at IS NULL
     // —— 过滤、部分索引条件、排序三者都由这一个索引满足，无需额外 Sort 节点。
     const list = await db.findMany<Requirement>("requirements", {
       where: { projectId: { eq: projectId }, archived_at: { isNull: true } },
       orderBy: [["updatedAt", "desc"]],
+      ...(opts?.limit != null ? { limit: opts.limit } : {}),
+      ...(opts?.offset ? { offset: opts.offset } : {}),
     });
     return attachDerivedStatus(list);
   }
 );
 
-/** 当前用户全部需求（跨项目），用于概览页「最近需求」。 */
-export const listRequirementsForOwner = memo(
-  (ownerId: string) => `listRequirementsForOwner:${ownerId}`,
+/** 单个项目下的需求总数，用于需求列表分页控件算总页数。 */
+export const countRequirements = memo(
+  (projectId: string) => `countRequirements:${projectId}`,
   LIST_TTL_MS,
-  async (ownerId: string): Promise<Requirement[]> => {
+  async (projectId: string): Promise<number> => {
+    return db.countMany("requirements", {
+      projectId: { eq: projectId },
+      archived_at: { isNull: true },
+    });
+  }
+);
+
+/** 需求列表分页参数。不传 = 返回全部（与历史行为一致）。 */
+export interface ListRequirementsOpts {
+  /** 每页条数上限 */
+  limit?: number;
+  /** 跳过前 offset 条（与 limit 配合做分页） */
+  offset?: number;
+}
+
+/** 当前用户全部需求（跨项目），用于概览页「最近需求」。支持分页。 */
+export const listRequirementsForOwner = memo(
+  (ownerId: string, opts?: ListRequirementsOpts) =>
+    `listRequirementsForOwner:${ownerId}:${opts?.limit ?? "all"}:${opts?.offset ?? 0}`,
+  LIST_TTL_MS,
+  async (ownerId: string, opts?: ListRequirementsOpts): Promise<Requirement[]> => {
     const owned = await listProjects(ownerId);
     const ids = owned.map((p) => p.id);
     if (ids.length === 0) return [];
@@ -61,8 +85,29 @@ export const listRequirementsForOwner = memo(
     const list = await db.findMany<Requirement>("requirements", {
       where: { projectId: { in: ids }, archived_at: { isNull: true } },
       orderBy: [["updatedAt", "desc"]],
+      ...(opts?.limit != null ? { limit: opts.limit } : {}),
+      ...(opts?.offset ? { offset: opts.offset } : {}),
     });
     return attachDerivedStatus(list);
+  }
+);
+
+/**
+ * 当前用户需求总数（跨项目），用于分页控件算总页数。
+ * 与 listRequirementsForOwner 搭配使用时，两者内部都要取「我的项目」，
+ * 靠 listProjects 的进程内缓存保证同一请求内只查一次。
+ */
+export const countRequirementsForOwner = memo(
+  (ownerId: string) => `countRequirementsForOwner:${ownerId}`,
+  LIST_TTL_MS,
+  async (ownerId: string): Promise<number> => {
+    const owned = await listProjects(ownerId);
+    const ids = owned.map((p) => p.id);
+    if (ids.length === 0) return 0;
+    return db.countMany("requirements", {
+      projectId: { in: ids },
+      archived_at: { isNull: true },
+    });
   }
 );
 
@@ -70,6 +115,7 @@ export const listRequirementsForOwner = memo(
 export function invalidateRequirementsCache(): void {
   invalidateCache("listRequirements:*");
   invalidateCache("listRequirementsForOwner:*");
+  invalidateCache("countRequirementsForOwner:*");
   invalidateCache("getRequirementWithStatus:*");
   invalidateCache("listOutputs:*");
 }

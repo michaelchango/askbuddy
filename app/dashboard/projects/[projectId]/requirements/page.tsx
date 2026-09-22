@@ -9,18 +9,39 @@ import type { Requirement, RequirementStatus } from "@/types";
 import { PageContainer, PageHeader } from "@/components/layout/page";
 import { Loader2 } from "lucide-react";
 
+/** 需求卡片是 3 列网格，每页 12 条 = 4 行，翻页节奏比较自然。 */
+const PAGE_SIZE = 12;
+
+interface PagedRequirements {
+  data: Requirement[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export default function ProjectRequirementsPage() {
   const router = useRouter();
   const params = useParams<{ projectId: string }>();
   const projectId = params.projectId;
   const { mutate: globalMutate } = useSWRConfig();
   const [creating, setCreating] = useState(false);
+  const [page, setPage] = useState(1);
 
-  const { data: requirements = [] } = useSWR<Requirement[]>(
-    `/api/requirements?projectId=${projectId}`,
-    (url: string) =>
-      fetch(url).then((r) => r.json()).then((d) => (d.ok ? d.data : []))
+  // 分页拉取：原本一次拉全量需求，数据量随使用线性增长；
+  // 生产环境前端在海外、数据库在境内，每次跨网关 SQL 往返约 1.7s，全量会越来越慢。
+  const swrKey = `/api/requirements?projectId=${projectId}&page=${page}&pageSize=${PAGE_SIZE}`;
+  const { data: paged } = useSWR<PagedRequirements>(swrKey, (url: string) =>
+    fetch(url)
+      .then((r) => r.json())
+      .then((d) =>
+        d.ok
+          ? (d as PagedRequirements)
+          : { data: [], total: 0, page: 1, pageSize: PAGE_SIZE, totalPages: 1 }
+      )
   );
+  const requirements = paged?.data ?? [];
+  const totalPages = paged?.totalPages ?? 1;
 
   // 轮询列表：挂载即启动低频轮询，检测到「生成中」时缩短间隔以更快反映状态翻转。
   // 关键：不能依赖首次快照是否有 generatingStep 来决定是否轮询 —— 首次数据可能是旧快照
@@ -30,10 +51,11 @@ export default function ProjectRequirementsPage() {
   useEffect(() => {
     const interval = anyGenerating ? 2000 : 5000;
     const id = setInterval(() => {
-      globalMutate(`/api/requirements?projectId=${projectId}`);
+      // 只刷新当前这一页（key 必须带分页参数，否则刷新的是另一个缓存条目）
+      globalMutate(swrKey);
     }, interval);
     return () => clearInterval(id);
-  }, [anyGenerating, projectId, globalMutate]);
+  }, [anyGenerating, globalMutate, swrKey]);
 
   async function handleCreate() {
     if (creating) return;
@@ -46,7 +68,9 @@ export default function ProjectRequirementsPage() {
       });
       const d = await res.json();
       if (d.ok) {
-        globalMutate(`/api/requirements?projectId=${projectId}`);
+        // 新需求按 updatedAt DESC 排在最前，回到第 1 页即可看到它
+        setPage(1);
+        globalMutate(swrKey);
         router.push(`/dashboard/requirements/${d.data.id}`);
       }
     } finally {
@@ -110,6 +134,31 @@ export default function ProjectRequirementsPage() {
           );
         })}
       </div>
+
+      {/* 分页控件：仅当不止一页时出现 */}
+      {totalPages > 1 && (
+        <div className="mt-[36px] flex items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="flex h-[38px] items-center rounded-[9px] border border-[#1111111a] bg-white px-[18px] text-[13.5px] font-semibold text-[#111111] transition-colors hover:bg-[#F2F0EB] disabled:opacity-40"
+          >
+            上一页
+          </button>
+          <span className="text-[13.5px] text-[#78746C]">
+            第 {page} / {totalPages} 页
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className="flex h-[38px] items-center rounded-[9px] border border-[#1111111a] bg-white px-[18px] text-[13.5px] font-semibold text-[#111111] transition-colors hover:bg-[#F2F0EB] disabled:opacity-40"
+          >
+            下一页
+          </button>
+        </div>
+      )}
 
       {requirements.length === 0 && (
         <div className="mt-[64px] flex flex-col items-center text-center">

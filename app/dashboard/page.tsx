@@ -185,6 +185,14 @@ const fetcher = async (url: string) => {
   return d.ok ? d.data : [];
 };
 
+/**
+ * 概览页取「最近需求」的上限。
+ * 这里只用于：下方列表展示前 5 条 + 项目卡片上「N 个需求」的粗略计数，
+ * 不需要全量。取 50 条既够用，又避免数据量随使用无限增长
+ * （生产环境每次跨网关 SQL 往返约 1.7s，全量拉取会越来越慢）。
+ */
+const REQ_PAGE_SIZE = 50;
+
 export default function DashboardOverview() {
   const user = useUser();
   const { data: projects = [], mutate: mutateProjects } = useSWR<Project[]>(
@@ -203,7 +211,13 @@ export default function DashboardOverview() {
     });
     mutateProjects();
   };
-  const { data: requirements = [], mutate: mutateRequirements } = useSWR<Requirement[]>("/api/requirements", fetcher);
+  // 概览页只展示「最近需求」（前 5 条）与项目卡片的粗略计数，
+  // 原本一次拉全量需求再前端切片 —— 数据量随使用无限增长，而跨网关 SQL 往返
+  // 在生产环境约 1.7s/次，全量拉取会越来越慢。改为只取最近 REQ_PAGE_SIZE 条。
+  const { data: requirements = [], mutate: mutateRequirements } = useSWR<Requirement[]>(
+    `/api/requirements?page=1&pageSize=${REQ_PAGE_SIZE}`,
+    fetcher
+  );
 
   // 若有需求正在生成中，低频轮询列表以在生成完成后自动刷新状态与阶段标签。
   const anyGenerating = requirements.some((r) => !!r.generatingStep);

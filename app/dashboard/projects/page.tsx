@@ -15,6 +15,12 @@ const fetcher = async (url: string) => {
   return d.ok ? d.data : [];
 };
 
+/**
+ * 项目列表页取需求的上限。只用于项目卡片的「N 个需求」计数与最近更新时间展示，
+ * 不做翻页（项目卡片网格本身一次展示全部项目），取 50 条足够且能限制数据量。
+ */
+const REQ_PAGE_SIZE = 50;
+
 type ProjectCardProps = {
   project: Project;
   reqCount: number;
@@ -370,7 +376,13 @@ export default function ProjectsPage() {
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<SortBy>("updatedAt");
   const { data: projects = [], mutate } = useSWR<Project[]>("/api/projects", fetcher);
-  const { data: requirements = [] } = useSWR<Requirement[]>("/api/requirements", fetcher);
+  // 需求只用于项目卡片上的「N 个需求」计数与最近更新时间，取最近 REQ_PAGE_SIZE 条即可。
+  // 原本一次拉全量，数据量随使用线性增长；生产环境前端在海外、数据库在境内，
+  // 每次跨网关 SQL 往返约 1.7s，全量拉取会越来越慢。
+  const { data: requirements = [] } = useSWR<Requirement[]>(
+    `/api/requirements?page=1&pageSize=${REQ_PAGE_SIZE}`,
+    fetcher
+  );
   const reqCount = new Map<string, number>();
   for (const r of requirements) {
     reqCount.set(r.projectId, (reqCount.get(r.projectId) ?? 0) + 1);
