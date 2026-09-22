@@ -9,6 +9,9 @@ import {
 } from "@/lib/services/requirements";
 import { getProject } from "@/lib/services/projects";
 
+// 数据库在境内，函数固定在香港区域，缩短每趟 SQL 跨网关往返（覆盖 Vercel 后台 region 设置）。
+export const regions = ["hkg1"];
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
