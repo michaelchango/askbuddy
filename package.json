@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "prebuild": "npm ci && node scripts/vercel-diag.cjs && tsx scripts/db-setup-cloudbase.ts",
+    "prebuild": "node scripts/vercel-diag.cjs && tsx scripts/db-setup-cloudbase.ts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -19,7 +19,7 @@
     "db:migrate:m3": "tsx scripts/db-migrate-m3.ts",
     "db:probe": "tsx scripts/probe-cloudbase-pg.ts",
     "verify:embedding": "tsx scripts/verify-embedding.ts",
-    "test": "tsx --test lib/schemas/devcontext.test.ts lib/services/devcontext-validate.test.ts lib/services/devcontext-render.test.ts lib/ai/context/builder.test.ts",
+    "test": "tsx --test lib/schemas/devcontext.test.ts lib/services/devcontext-validate.test.ts lib/services/devcontext-render.test.ts lib/ai/context/builder.test.ts lib/ai/steps/knowledge-trace.test.ts",
     "test:parity": "tsx --test __tests__/db-pushdown-parity.test.ts"
   },
   "dependencies": {
