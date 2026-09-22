@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import useSWR, { mutate as globalMutate } from "swr";
-import { ChevronRight, ChevronDown, PanelRightOpen } from "lucide-react";
+import { ChevronRight, ChevronDown, PanelRightOpen, Sparkles } from "lucide-react";
 import {
   UserContext,
   type ShellUser,
@@ -188,9 +188,12 @@ export function RequirementShell({
     projectId ? `/api/projects/${projectId}` : null,
     reqFetcher
   );
+  // 兄弟需求只在面包屑下拉展开时才用到，改为按需拉取。
+  // 原本首屏就请求，而它一次要跑 3 次跨网关 SQL（项目校验 + 需求 + 步骤派生），
+  // 生产环境前端在海外、数据库在境内 ≈ 1.7s/次，等于首屏白等 5 秒。
   const { data: siblings = [] } = useSWR<
     { id: string; title: string; status: string }[]
-  >(projectId ? `/api/requirements?projectId=${projectId}` : null, listFetcher);
+  >(breadOpen && projectId ? `/api/requirements?projectId=${projectId}` : null, listFetcher);
   const { data: outputs = [], mutate: refreshOutputs } = useSWR<OutputMeta[]>(
     `/api/requirements/${requirementId}/outputs`,
     (u: string) => fetch(u).then((r) => r.json()).then((j) => j.data),
@@ -1467,6 +1470,16 @@ export function RequirementShell({
             </div>
 
             <div className="flex items-center gap-2">
+              {/* M4：需求完成后提供「沉淀知识」入口，跳转到项目知识库页 */}
+              {req?.status === "completed" && projectId && (
+                <Link
+                  href={`/dashboard/projects/${projectId}/knowledge`}
+                  className="flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[13.5px] font-medium text-[#f66612] transition-colors hover:bg-[#f6661219]"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  沉淀知识
+                </Link>
+              )}
               <button type="button" aria-label="通知" className="flex h-9 w-9 items-center justify-center rounded-[9px] hover:bg-[#F2F0EB]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/figma-dash/2.svg" alt="" className="h-[18px] w-[18px]" />
