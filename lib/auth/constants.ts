@@ -10,3 +10,9 @@
 
 /** 会话 Cookie 名（改名前为 prd_session，改名后旧 Cookie 自然失效，用户重新登录即可）。 */
 export const SESSION_COOKIE = "askbuddy_session";
+
+/** 体验模式：Cookie 有效期（30 天，过期需重填昵称）。 */
+export const SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
+
+/** 体验模式：昵称最大字符数（与 /api/auth/login 校验同步）。 */
+export const NICK_MAX_LEN = 20;
