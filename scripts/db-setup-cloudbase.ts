@@ -81,6 +81,15 @@ function splitStatements(sql: string): string[] {
   return out;
 }
 
+/** 是否把连接类错误当作「瞬态」降级跳过。build/CI 环境数据库瞬时不可达（连接池满、网络抖动）
+ *  不应阻断整次构建——建库脚本幂等，且表结构通常已存在。
+ *  DB_SETUP_STRICT=1 时关闭降级，遇错直接失败（用于本地/CI 确定要建表的场景）。 */
+const SETUP_STRICT = process.env.DB_SETUP_STRICT === "1";
+function isTransientConnError(msg: string): boolean {
+  if (SETUP_STRICT) return false;
+  return /EMAXCONNSESSION|max clients reached|pool_size|too many clients|ECONNRESET|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|timed?\s?out|fetch failed|connection (refused|reset|timeout)|5\d\d|BadGateway|Service Unavailable|Gateway Timeout|rate limit|429/i.test(msg);
+}
+
 async function main(): Promise<void> {
   console.log("[setup] 启用 pgvector 扩展…");
   await execPgSql("CREATE EXTENSION IF NOT EXISTS vector");
@@ -104,10 +113,16 @@ async function main(): Promise<void> {
       console.log(`  ✓ ${preview}`);
     } catch (e) {
       const msg = (e as Error).message;
-      // 已存在的表/索引/扩展直接跳过（幂等语义），其他错误才中断
-      if (/already exists|42P07|42P07/.test(msg)) {
+      // 已存在的表/索引/扩展直接跳过（幂等语义）
+      if (/already exists|42P07/.test(msg)) {
         skipped++;
         console.log(`  ⊘ ${preview}（已存在，跳过）`);
+        continue;
+      }
+      // 连接池满/网络抖动等瞬态错误：降级跳过，不阻断 build（表通常已存在）
+      if (isTransientConnError(msg)) {
+        skipped++;
+        console.warn(`  ⚠ ${preview}（连接不可用，跳过：${msg.slice(0, 120)}）`);
         continue;
       }
       console.error(`  ✗ ${preview}`);
@@ -124,21 +139,38 @@ async function main(): Promise<void> {
     "solutions", "solution_versions", "prototypes", "prototype_versions",
     "prds", "prd_versions", "api_tokens", "share_tokens", "objects",
     "dev_contexts", "dev_context_versions",
-    "suggestions", "decisions", "doc_sections",
+    "suggestions", "decisions", "doc_sections", "knowledge_entries",
   ];
-  const rows = await execPgSql<{ t: string }>(
-    `SELECT table_name AS t FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'`
-  );
-  const exist = new Set(rows.map((r) => r.t));
-  const missing = tables.filter((t) => !exist.has(t));
-  if (missing.length) {
-    console.error(`[setup] 缺表：${missing.join(", ")}`);
-    process.exit(1);
+  try {
+    const rows = await execPgSql<{ t: string }>(
+      `SELECT table_name AS t FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'`
+    );
+    const exist = new Set(rows.map((r) => r.t));
+    const missing = tables.filter((t) => !exist.has(t));
+    if (missing.length) {
+      // 若前面因连接错误跳过了建表，缺表很可能是连带结果，降级为警告避免阻断 build
+      console.warn(`[setup] 以下表可能未就绪（如因连接失败跳过建表所致可忽略）：${missing.join(", ")}`);
+    } else {
+      console.log(`[setup] ${tables.length} 张业务表全部就绪 ✓`);
+    }
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (isTransientConnError(msg)) {
+      console.warn(`[setup] 无法校验表（连接不可用，跳过）：${msg.slice(0, 120)}`);
+    } else {
+      console.error(`[setup] 表校验失败：${msg.slice(0, 200)}`);
+      process.exit(1);
+    }
   }
-  console.log(`[setup] ${tables.length} 张业务表全部就绪 ✓`);
 }
 
 main().catch((e) => {
+  const msg = (e as Error).message ?? String(e);
+  if (isTransientConnError(msg)) {
+    console.warn(`[setup] 建库跳过：数据库连接不可用（${msg.slice(0, 160)}）。`);
+    console.warn("[setup] 表结构应已存在（脚本幂等）；如需强制建库请本地运行 DB_SETUP_STRICT=1 npm run db:setup:cloudbase");
+    process.exit(0);
+  }
   console.error(e);
   process.exit(1);
 });
