@@ -58,5 +58,10 @@
     "tailwindcss": "^3.4.4",
     "tsx": "^4.19.0",
     "typescript": "^5.4.5"
-  }
+  },
+  "onlyBuiltDependencies": [
+    "esbuild",
+    "core-js-pure",
+    "unrs-resolver"
+  ]
 }
