@@ -59,9 +59,9 @@
     "tsx": "^4.19.0",
     "typescript": "^5.4.5"
   },
-  "onlyBuiltDependencies": [
-    "esbuild",
-    "core-js-pure",
-    "unrs-resolver"
-  ]
+  "approvedScripts": {
+    "esbuild": ["postinstall"],
+    "core-js-pure": ["postinstall"],
+    "unrs-resolver": ["postinstall"]
+  }
 }
