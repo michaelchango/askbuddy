@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth/session";
 import { listProjects, createProject } from "@/lib/services/projects";
 
 // 数据库在境内，函数固定在香港区域，缩短每趟 SQL 跨网关往返（覆盖 Vercel 后台 region 设置）。
-export const regions = ["hkg1"];
+export const preferredRegion = "hkg1";
 
 export async function GET() {
   const user = await getSession();

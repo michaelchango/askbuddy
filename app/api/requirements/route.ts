@@ -10,7 +10,7 @@ import {
 } from "@/lib/services/requirements";
 
 // 数据库在境内，函数固定在香港区域，缩短每趟 SQL 跨网关往返（覆盖 Vercel 后台 region 设置）。
-export const regions = ["hkg1"];
+export const preferredRegion = "hkg1";
 
 /** 每页条数上限，防止 pageSize 被放大成全表扫描。 */
 const MAX_PAGE_SIZE = 100;

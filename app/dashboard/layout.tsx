@@ -9,7 +9,7 @@ import Providers from "@/components/providers";
 
 // 数据库在境内，函数固定在香港区域，缩短每趟 SQL 跨网关往返（覆盖 Vercel 后台 region 设置）。
 // 本布局是 server component（await listProjects），决定整个 dashboard 子树的 server 渲染 region。
-export const regions = ["hkg1"];
+export const preferredRegion = "hkg1";
 
 /** 由会话用户派生出 Shell 需要展示的姓名/首字母（不再写死前端 mock 用户） */
 function toShellUser(u: { uid: string; email: string }): ShellUser {
