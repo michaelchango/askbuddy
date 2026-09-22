@@ -18,27 +18,48 @@ const API_KEY = process.env.CLOUDBASE_SECRET;
 const BASE = ENV_ID ? `https://${ENV_ID}.api.tcloudbasegateway.com` : "";
 const ROLE = "cloudbase_postgres";
 
+// Vercel/CI 上表结构若已就绪，可用 DB_SETUP_SKIP=1 完全跳过建库：
+// 既省去每次 build 都连 CloudBase 的耗时，也避免凭据/连接池波动干扰部署。
+if (process.env.DB_SETUP_SKIP === "1") {
+  console.log("[setup] DB_SETUP_SKIP=1，跳过建库（表结构应已就绪）。");
+  process.exit(0);
+}
+
 if (!ENV_ID || !API_KEY || !BASE) {
   console.error("缺少 CLOUDBASE_ENV_ID / CLOUDBASE_SECRET，无法建库。");
   process.exit(1);
 }
 
 async function execPgSql<T = unknown>(sqlText: string): Promise<T[]> {
-  const res = await fetch(`${BASE}/v1/rdb/exec-pgsql`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${API_KEY}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({ Sql: sqlText, Role: ROLE }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`exec-pgsql HTTP ${res.status}: ${text}\nSQL: ${sqlText.slice(0, 200)}`);
+  const request = async (): Promise<T[]> => {
+    const res = await fetch(`${BASE}/v1/rdb/exec-pgsql`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ Sql: sqlText, Role: ROLE }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`exec-pgsql HTTP ${res.status}: ${text}\nSQL: ${sqlText.slice(0, 200)}`);
+    }
+    const data = (await res.json()) as unknown;
+    return Array.isArray(data) ? data : [];
+  };
+
+  try {
+    return await request();
+  } catch (e) {
+    const msg = (e as Error).message;
+    // 401 / ACCESS_TOKEN_INVALID 多为网关侧访问令牌短暂失效，等待后重试一次。
+    if (/ACCESS_TOKEN_INVALID|Access token is invalid|HTTP 401/i.test(msg)) {
+      await new Promise((r) => setTimeout(r, 1500));
+      return await request();
+    }
+    throw e;
   }
-  const data = (await res.json()) as unknown;
-  return Array.isArray(data) ? data : [];
 }
 
 /** 把 schema.sql 拆成单条语句（处理 -- 注释与 $$ 美元引用，避免误拆）。 */
@@ -87,7 +108,9 @@ function splitStatements(sql: string): string[] {
 const SETUP_STRICT = process.env.DB_SETUP_STRICT === "1";
 function isTransientConnError(msg: string): boolean {
   if (SETUP_STRICT) return false;
-  return /EMAXCONNSESSION|max clients reached|pool_size|too many clients|ECONNRESET|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|timed?\s?out|fetch failed|connection (refused|reset|timeout)|5\d\d|BadGateway|Service Unavailable|Gateway Timeout|rate limit|429/i.test(msg);
+  // 401/403（ACCESS_TOKEN_INVALID 等）也归入「不阻断 build」：密钥轮换或令牌短暂失效
+  // 会在下一次正常执行时补齐，而表结构此刻通常已存在（脚本幂等）。
+  return /EMAXCONNSESSION|max clients reached|pool_size|too many clients|ECONNRESET|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|timed?\s?out|fetch failed|connection (refused|reset|timeout)|5\d\d|BadGateway|Service Unavailable|Gateway Timeout|rate limit|429|ACCESS_TOKEN_INVALID|Access token is invalid|token is invalid|invalid token|HTTP 401|HTTP 403|unauthorized/i.test(msg);
 }
 
 async function main(): Promise<void> {
