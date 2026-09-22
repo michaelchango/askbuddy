@@ -24,8 +24,13 @@ import {
   REVERSE_MAP,
   TABLES,
   TIMESTAMP_COLS,
-  VECTOR_COLS,
 } from "./field-map";
+
+// 向量列白名单内联定义，避免依赖 field-map 尚未提交的 VECTOR_COLS 导出
+// （当前仅 M4 知识库 knowledge_entries.embedding 为 pgvector 列；维度由 lib/ai/embedding.ts 校验）。
+const VECTOR_COLS: Readonly<Record<string, readonly string[]>> = {
+  knowledge_entries: ["embedding"],
+};
 import {
   type DbBackend,
   type FindManyOptions,
