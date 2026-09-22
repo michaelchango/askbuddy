@@ -24,6 +24,7 @@ import {
   REVERSE_MAP,
   TABLES,
   TIMESTAMP_COLS,
+  VECTOR_COLS,
 } from "./field-map";
 import {
   type DbBackend,
@@ -272,6 +273,35 @@ function isJsonbCol(table: string, col: string): boolean {
   return (JSONB_COLS[table] ?? []).includes(col);
 }
 
+function isVectorCol(table: string, col: string): boolean {
+  return (VECTOR_COLS[table] ?? []).includes(col);
+}
+
+/** vector 列字面量：number[] → '[0.1,0.2]'::vector（网关 SQL 通道，无参数化）。 */
+function vectorLit(v: unknown): string {
+  if (v === null || v === undefined) return "NULL";
+  const arr = Array.isArray(v) ? v : (typeof v === "string" ? safeParseVector(v) : null);
+  if (!Array.isArray(arr)) {
+    throw new Error(`向量列值非法（须为 number[]）: ${JSON.stringify(v).slice(0, 80)}`);
+  }
+  return `${lit(arr)}::vector`;
+}
+
+function safeParseVector(raw: unknown): unknown {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    if (s.startsWith("[") && s.endsWith("]")) {
+      try {
+        return JSON.parse(s);
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * 生成一段不会与 content 冲突的 PostgreSQL dollar-quote 标签。
  * 从 "j" 开始，若 content 里包含该闭合 delimiter 则递增标签长度，
@@ -309,6 +339,8 @@ function toColumns(table: string, row: Row): Array<[string, string]> {
     const col = toColumn(table, key);
     if (isJsonbCol(table, col)) {
       out.push([col, jsonbLit(value)]);
+    } else if (isVectorCol(table, col)) {
+      out.push([col, vectorLit(value)]);
     } else {
       out.push([col, lit(value)]);
     }
@@ -323,6 +355,7 @@ function toRow<T = Row>(table: string, dbRow: Row | undefined): T | undefined {
   const tsCols = TIMESTAMP_COLS[table] ?? [];
   const bigCols = BIGINT_COLS[table] ?? [];
   const jsonbCols = JSONB_COLS[table] ?? [];
+  const vectorCols = VECTOR_COLS[table] ?? [];
   const out: Row = {};
 
   for (const [col, raw] of Object.entries(dbRow)) {
@@ -342,6 +375,10 @@ function toRow<T = Row>(table: string, dbRow: Row | undefined): T | undefined {
         } catch {
           value = raw;
         }
+      } else if (vectorCols.includes(col)) {
+        // vector 列读出：网关可能返回 '[0.1,0.2]' 字符串或 number[]，统一还原 number[]。
+        const parsed = safeParseVector(raw);
+        value = parsed === null ? raw : parsed;
       }
     }
     out[key] = value;
@@ -583,6 +620,23 @@ export const cloudbaseBackend: DbBackend = {
       scored.push(toRow<T>(table, r as unknown as Row) as T & { score: number });
     }
     return scored;
+  },
+
+  async queryRaw<T = Row>(
+    table: string,
+    sql: string,
+    params?: Record<string, unknown>
+  ): Promise<T[]> {
+    assertTable(table);
+    const finalSql = params
+      ? sql.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, (_m, k: string) => {
+          if (!(k in params)) {
+            throw new Error(`queryRaw 缺少参数 :${k}`);
+          }
+          return lit(params[k]);
+        })
+      : sql;
+    return toRows<T>(table, await execPgSql(finalSql));
   },
 };
 

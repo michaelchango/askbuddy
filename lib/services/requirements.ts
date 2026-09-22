@@ -72,23 +72,69 @@ export interface ListRequirementsOpts {
   offset?: number;
 }
 
+/**
+ * owner 维度需求查询下推成单条带子查询的 SQL，把原本
+ * 「listProjects → findMany(requirements IN 项目ids) → attachDerivedStatus(steps)」
+ * 的 3 趟串行砍成 2 趟（这条子查询 + steps 那趟）。子查询在数据库内完成
+ * project_id 过滤，省掉一次跨网关往返（生产环境部署海外、数据库在境内时关键）。
+ *
+ * 仅在支持 queryRaw 的 cloudbase / postgres 后端走快路径；不支持的后端
+ * （mock / nosql）由调用方 try/catch 回落到旧的三趟组合。
+ * 列名直接用库内真实列（queryRaw 透传 SQL，不经 field-map 翻译）；ownerId
+ * 经 :owner 占位由 db.queryRaw 内部 lit() 转义，等效预处理，防注入。
+ */
+function buildOwnerReqSql(
+  ownerId: string,
+  opts?: ListRequirementsOpts
+): { sql: string; params: Record<string, unknown> } {
+  const params: Record<string, unknown> = { owner: ownerId };
+  let sql =
+    `SELECT r.* FROM requirements r ` +
+    `WHERE r.project_id IN (SELECT id FROM projects WHERE owner_id = :owner AND deleted_at IS NULL) ` +
+    `AND r.archived_at IS NULL ORDER BY r.updated_at DESC`;
+  // 不传 limit 时与 findMany 默认 listLimit()=1000 对齐，避免误拉全表。
+  if (opts?.limit != null) {
+    sql += ` LIMIT :lim`;
+    params.lim = opts.limit;
+  } else {
+    sql += ` LIMIT 1000`;
+  }
+  if (opts?.offset) {
+    sql += ` OFFSET :off`;
+    params.off = opts.offset;
+  }
+  return { sql, params };
+}
+
+const OWNER_COUNT_SQL = `
+SELECT COUNT(*)::text AS n FROM requirements r
+WHERE r.project_id IN (SELECT id FROM projects WHERE owner_id = :owner AND deleted_at IS NULL)
+AND r.archived_at IS NULL`;
+
 /** 当前用户全部需求（跨项目），用于概览页「最近需求」。支持分页。 */
 export const listRequirementsForOwner = memo(
   (ownerId: string, opts?: ListRequirementsOpts) =>
     `listRequirementsForOwner:${ownerId}:${opts?.limit ?? "all"}:${opts?.offset ?? 0}`,
   LIST_TTL_MS,
   async (ownerId: string, opts?: ListRequirementsOpts): Promise<Requirement[]> => {
-    const owned = await listProjects(ownerId);
-    const ids = owned.map((p) => p.id);
-    if (ids.length === 0) return [];
-    // 下推：project_id IN (...)
-    const list = await db.findMany<Requirement>("requirements", {
-      where: { projectId: { in: ids }, archived_at: { isNull: true } },
-      orderBy: [["updatedAt", "desc"]],
-      ...(opts?.limit != null ? { limit: opts.limit } : {}),
-      ...(opts?.offset ? { offset: opts.offset } : {}),
-    });
-    return attachDerivedStatus(list);
+    try {
+      // 快路径：一条带子查询的 SQL 取代「查项目 + 查需求」两趟（cloudbase/postgres）。
+      const { sql, params } = buildOwnerReqSql(ownerId, opts);
+      const list = await db.queryRaw<Requirement>("requirements", sql, params);
+      return attachDerivedStatus(list);
+    } catch {
+      // 回落：mock / nosql 等不支持 queryRaw 的后端，走旧的三趟组合。
+      const owned = await listProjects(ownerId);
+      const ids = owned.map((p) => p.id);
+      if (ids.length === 0) return [];
+      const list = await db.findMany<Requirement>("requirements", {
+        where: { projectId: { in: ids }, archived_at: { isNull: true } },
+        orderBy: [["updatedAt", "desc"]],
+        ...(opts?.limit != null ? { limit: opts.limit } : {}),
+        ...(opts?.offset ? { offset: opts.offset } : {}),
+      });
+      return attachDerivedStatus(list);
+    }
   }
 );
 
@@ -101,13 +147,24 @@ export const countRequirementsForOwner = memo(
   (ownerId: string) => `countRequirementsForOwner:${ownerId}`,
   LIST_TTL_MS,
   async (ownerId: string): Promise<number> => {
-    const owned = await listProjects(ownerId);
-    const ids = owned.map((p) => p.id);
-    if (ids.length === 0) return 0;
-    return db.countMany("requirements", {
-      projectId: { in: ids },
-      archived_at: { isNull: true },
-    });
+    try {
+      // 快路径：单条带子查询的 COUNT，取代「查项目 + countMany」两趟。
+      const rows = await db.queryRaw<{ n: string }>(
+        "requirements",
+        OWNER_COUNT_SQL,
+        { owner: ownerId }
+      );
+      return Number(rows[0]?.n ?? 0);
+    } catch {
+      // 回落：不支持 queryRaw 的后端。
+      const owned = await listProjects(ownerId);
+      const ids = owned.map((p) => p.id);
+      if (ids.length === 0) return 0;
+      return db.countMany("requirements", {
+        projectId: { in: ids },
+        archived_at: { isNull: true },
+      });
+    }
   }
 );
 

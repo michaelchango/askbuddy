@@ -86,6 +86,20 @@ export interface DbBackendP2 {
     table: string,
     opts: SearchVectorOptions
   ): Promise<Array<T & { score: number }>>;
+
+  /**
+   * 底层原始 SQL 透传。仅 cloudbase / postgres 后端实现，mock / nosql 不实现
+   * （门面探测后抛错，调用方据此回落到 findMany 组合）。
+   * sql 用 :name 占位，params 经 lit() 安全转义（等效预处理，防注入）；
+   * 返回行经 toRows(table) 还原为带代码键的业务对象，与 findMany 完全等价。
+   * 用途：把「先查 A 再拿 ids 查 B」的多趟串行下推成单条带子查询/JOIN 的 SQL，
+   * 削减跨网关往返（生产环境部署海外、数据库在境内时尤其关键）。
+   */
+  queryRaw?<T = Row>(
+    table: string,
+    sql: string,
+    params?: Record<string, unknown>
+  ): Promise<T[]>;
 }
 
 export type DbBackend = DbBackendP1 & Partial<DbBackendP2>;

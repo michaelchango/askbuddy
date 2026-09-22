@@ -147,6 +147,18 @@ export const db = {
       `当前数据库后端不支持 searchVector（向量检索需要 DB_BACKEND=postgres 或 cloudbase）。`
     );
   },
+
+  async queryRaw<T = Row>(
+    table: string,
+    sql: string,
+    params?: Record<string, unknown>
+  ): Promise<T[]> {
+    const b = await backend();
+    if (b.queryRaw) return b.queryRaw<T>(table, sql, params);
+    throw new Error(
+      `当前数据库后端不支持 queryRaw（需要 DB_BACKEND=cloudbase 或 postgres）。`
+    );
+  },
 };
 
 export type {
