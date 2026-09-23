@@ -58,6 +58,13 @@ export default async function AdminVisitsPage({
     <main className="mx-auto max-w-3xl p-8 text-[#111111]">
       <h1 className="mb-6 text-[24px] font-bold">体验统计</h1>
 
+      {s.error && (
+        <div className="mb-6 rounded-[13px] border border-[#f66612] bg-[#f6661210] p-4 text-[14px]">
+          <div className="font-semibold">统计读取失败</div>
+          <div className="mt-1 break-all text-[#78746C]">{s.error}</div>
+        </div>
+      )}
+
       <div className="mb-8 grid grid-cols-3 gap-4">
         <StatCard label="总访问次数" value={s.totalVisits} />
         <StatCard label="体验人数（去重昵称）" value={s.uniqueNicknames} />
