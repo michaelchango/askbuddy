@@ -426,6 +426,20 @@ CREATE TABLE objects (
 );
 
 
+-- ---------------- 体验访问记录（运营统计） ----------------
+-- 体验模式（/try 填昵称）下，每次「开始体验」记一条，用于统计有多少人来体验、谁在活跃。
+-- 仅作访问埋点，不参与业务数据隔离（业务数据仍按 projects.owner_id = 昵称 隔离）。
+CREATE TABLE visits (
+  id         BIGINT      GENERATED ALWAYS AS IDENTITY,
+  nickname   TEXT        NOT NULL,           -- 体验昵称（= cookie askbuddy_session）
+  user_agent TEXT        NULL,               -- 浏览器 UA（粗粒度设备识别）
+  referer    TEXT        NULL,               -- 来源页（从哪分享进来）
+  ip         TEXT        NULL,               -- 取 x-forwarded-for 首段
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT pk_visits PRIMARY KEY (id)
+);
+
+
 -- ============================================================
 -- 索引（P2 下推的性能基础，与 lib/db 的 findMany 下推点一一对应）
 -- 部分索引的 WHERE 条件直接对应代码里的 !r.archived_at / !r.deleted_at / !r.revoked_at 过滤
@@ -442,6 +456,8 @@ CREATE INDEX idx_prd_ver_req    ON prd_versions (requirement_id, version);
 CREATE INDEX idx_token_user     ON api_tokens (user_id) WHERE revoked_at IS NULL;
 CREATE UNIQUE INDEX uq_token_hash ON api_tokens (token_hash);
 CREATE INDEX idx_share_req      ON share_tokens (requirement_id, type, created_at DESC);
+CREATE INDEX idx_visits_created ON visits (created_at DESC);
+CREATE INDEX idx_visits_nick    ON visits (nickname);
 
 
 -- ============================================================

@@ -34,6 +34,25 @@ import {
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 
 // ---------------------------------------------------------------------------
+// 体验访问记录（运营统计，非业务表）
+// ---------------------------------------------------------------------------
+export const visits = pgTable(
+  "visits",
+  {
+    id: bigint("id", { mode: "number" }).generatedAlwaysAsIdentity().primaryKey(),
+    nickname: text("nickname").notNull(),
+    userAgent: text("user_agent"),
+    referer: text("referer"),
+    ip: text("ip"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    idxCreated: index("idx_visits_created").on(t.createdAt),
+    idxNick: index("idx_visits_nick").on(t.nickname),
+  })
+);
+
+// ---------------------------------------------------------------------------
 // 项目
 // ---------------------------------------------------------------------------
 export const projects = pgTable(
