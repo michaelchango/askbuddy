@@ -39,7 +39,6 @@ export const TABLES: ReadonlySet<string> = new Set([
   "decisions",
   "doc_sections",
   "knowledge_entries", // M4 知识复利
-  "visits", // 体验访问埋点（运营统计，非业务表）
 ]);
 
 /** 代码键 → PG 列名。同名项也必须显式列出（见维护约定 2）。 */
@@ -307,16 +306,6 @@ export const FIELD_MAP: Readonly<Record<string, Readonly<Record<string, string>>
     created_at: "created_at",
     updated_at: "updated_at",
   },
-
-  // 体验访问埋点表（非业务表，列名统一 snake_case）
-  visits: {
-    id: "id",
-    nickname: "nickname",
-    user_agent: "user_agent",
-    referer: "referer",
-    ip: "ip",
-    created_at: "created_at",
-  },
 };
 
 /** PG 列名 → 代码键（由 FIELD_MAP 反转，构建期一次性生成）。 */
@@ -357,7 +346,6 @@ export const TIMESTAMP_COLS: Readonly<Record<string, readonly string[]>> = {
   decisions: ["confirmed_at"], // M3
   doc_sections: [], // M3（无时间戳列）
   knowledge_entries: ["created_at", "updated_at"], // M4
-  visits: ["created_at"], // 体验访问埋点
 };
 
 /**
@@ -394,7 +382,6 @@ export const JSONB_COLS: Readonly<Record<string, readonly string[]>> = {
   decisions: [], // M3（无 JSONB 列）
   doc_sections: ["source"], // M3
   knowledge_entries: [], // M4（embedding 是 vector，非 JSONB，走 VECTOR_COLS）
-  visits: [], // 体验访问埋点（无 JSONB 列）
 };
 
 /**
@@ -434,7 +421,6 @@ export const BIGINT_COLS: Readonly<Record<string, readonly string[]>> = {
   dev_contexts: ["requirement_id"],
   dev_context_versions: ["id"],
   knowledge_entries: [], // M4（access_count 为 INTEGER，非 int8）
-  visits: ["id"], // 体验访问埋点：id 为 BIGINT 自增主键
 };
 
 /**
@@ -468,7 +454,6 @@ export const ALLOWED_ID_KEYS: Readonly<Record<string, readonly string[]>> = {
   decisions: ["id"], // M3
   doc_sections: ["id"], // M3
   knowledge_entries: ["id"], // M4
-  visits: ["id"], // 体验访问埋点
 };
 
 /**
@@ -499,5 +484,4 @@ export const ORDER_HINT: Readonly<Record<string, string | undefined>> = {
   decisions: "confirmed_at", // M3
   doc_sections: "id", // M3（无时间戳列，用主键排序）
   knowledge_entries: "updated_at", // M4
-  visits: "id", // 体验访问埋点：按自增主键即时间序
 };
