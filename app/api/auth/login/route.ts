@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth/session";
 import { NICK_MAX_LEN, SESSION_COOKIE_MAX_AGE } from "@/lib/auth/constants";
+import { recordVisit } from "@/lib/services/visits";
 
 // 体验模式：昵称字符规则——字母/数字/_/-/空格，1-NICK_MAX_LEN 字。
 // 拒绝 emoji 与控制字符，避免后续 SQL/JSONB 序列化与日志污染。
@@ -20,6 +21,14 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+  // 记录一次体验访问（埋点失败不影响登录；await 以保证 serverless 下写库完成）。
+  await recordVisit({
+    nickname,
+    userAgent: req.headers.get("user-agent"),
+    referer: req.headers.get("referer"),
+    ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+  });
+
   const res = NextResponse.json({ ok: true, data: { uid: nickname } });
   res.cookies.set(SESSION_COOKIE, nickname, {
     httpOnly: true,
