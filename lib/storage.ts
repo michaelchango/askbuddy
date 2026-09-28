@@ -8,7 +8,21 @@
 import { USE_MOCK } from "@/lib/cloudbase";
 import { db } from "@/lib/db";
 
-const mem: Record<string, string> = {};
+/**
+ * mock 对象存储。
+ *
+ * 【为什么挂在 globalThis 而不是模块局部变量】
+ * 模块局部变量在 Next dev 的**模块重评估**（路由首次编译 / HMR）之后会被重置，
+ * 而 mock DB 因为挂在 `globalThis.__askbuddy_memory` 上会存活下来。两者持久性不一致
+ * 会造出一类极难查的 flake：同一个进程内「先生成原型 → 后读原型」，中间只要发生
+ * 一次模块重评估，HTML 就静默变成空字符串（DB 行还在、`html_storage_key` 也在，
+ * 只有对象内容没了，没有任何报错）。
+ *
+ * 由 M5 e2e 场景 05 的 `--repeat-each=2` 暴露（第二遍必失败，第一遍必成功）。
+ * 修法就是让 mock 层的持久性与 DB 对齐：用同一个 globalThis 兜底。
+ */
+const globalStore = globalThis as unknown as { __askbuddy_objects?: Record<string, string> };
+const mem: Record<string, string> = (globalStore.__askbuddy_objects ??= {});
 
 export async function putObject(key: string, content: string): Promise<void> {
   if (USE_MOCK) {

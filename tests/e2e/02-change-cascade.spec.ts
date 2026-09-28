@@ -92,6 +92,13 @@ test.describe("场景 02 · 变更定向重算（A1）", () => {
     expect(marked.devContext.maybe_stale).toBe(true);
     expect(marked.devContext.stale_sections).toEqual(EXPECTED_STALE);
 
+    // ---------- 3.5 ★ C6：标记 = 只标记，**不自动重算**（§5.3 用户决策原则） ----------
+    // 变更走完之后、用户点「重算」之前：版本号必须没动、内容必须一个字节都没变。
+    // 这条断言的分量在于：它把「打标记」与「动内容」在**契约层面**切开——
+    // 一旦有人图省事在标记后顺手重算，这行会立刻红。
+    expect(marked.devContext.version).toBe(v1Version);
+    expect(JSON.stringify(marked.devContext.content)).toBe(v1Content);
+
     // ---------- 4. UI：过期徽标可见（折叠态也能看到，无需展开面板） ----------
     await gotoRequirement(page, rid);
     await openPrdView(page);
@@ -163,5 +170,62 @@ test.describe("场景 02 · 变更定向重算（A1）", () => {
     // UI 也同步到「设计中」
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(lifecycleBadge(page)).toHaveText("设计中", { timeout: 30_000 });
+  });
+
+  // ─────────────────────── C8：一致性失败只升级一次，仍失败就降 draft ───────────────────────
+  //
+  // 这条盯的是「不硬发」原则在定向重算里的落地：
+  //   重算出来的段落彼此自相矛盾（AC 引用了不存在的业务规则）时，
+  //   系统应当**把范围扩大一次**再试，而不是无限重试（烧 token）也不是硬发一份矛盾产物。
+  //   第二次仍然失败 → 降级 draft，把决策交还给人。
+  //
+  // 驱动方式：把场景标记写进 changeNote —— mock 会从消息里识别 `[[scenario:xxx]]`。
+  // 这样不必为了这一个用例重启 dev server（改 process.env 做不到按用例生效）。
+  test("★ C8：定向重算产出自相矛盾时，升级一次 → 仍失败 → 降级 draft", async ({ request }) => {
+    const { requirementId } = await seed(request, "full-flow");
+    const rid = requirementId as string;
+
+    const before = await introspect(request, rid);
+    expect(before.devContext.status).toBe("confirmed");
+    const v1 = before.devContext.version as number;
+
+    const events = await refreshDevContext(request, rid, {
+      mode: "targeted",
+      // 请求段必须包含 acceptance_criteria，否则悬空引用会被「越权段丢弃」裁掉，
+      // 这条用例就变成了在测别的东西。
+      sections: ["dependencies", "business_rules", "edge_cases", "acceptance_criteria", "test_cases"],
+      changeNote: "[[scenario:inconsistent]] 按新约束返工一次",
+    });
+
+    const payload = changeUpdateOf(events);
+    expect(payload, "必须收到 change_update").toBeTruthy();
+    const dc = payload!.devContext as {
+      version: number;
+      escalated: boolean;
+      status: string;
+      changed: string[];
+      unchanged: string[];
+    };
+
+    // ① 发生过一次升级（而不是零次或无限次）
+    expect(dc.escalated, "一致性失败必须触发一次升级重算").toBe(true);
+    // ② 升级后仍然矛盾 → 降级 draft（不硬发）
+    expect(dc.status).toBe("draft");
+    expect(dc.version).toBe(v1 + 1);
+
+    // ③ 库内状态与事件载荷一致，且审计里能看到这条 error 级问题
+    const after = await introspect(request, rid);
+    expect(after.devContext.status).toBe("draft");
+    expect(after.devContext.version).toBe(v1 + 1);
+
+    // ④ 未受影响段依然逐字节保留（升级重算也不能顺手改别处）
+    const v1Obj = before.devContext.content as Record<string, unknown>;
+    const v2Obj = after.devContext.content as Record<string, unknown>;
+    for (const key of ["objective", "scope", "user_scenarios", "data_structures", "glossary"]) {
+      expect(
+        JSON.stringify(v2Obj[key] ?? null),
+        `升级重算时未受影响段被改动了：${key}`
+      ).toBe(JSON.stringify(v1Obj[key] ?? null));
+    }
   });
 });

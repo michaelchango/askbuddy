@@ -51,17 +51,21 @@ function guard(): NextResponse | null {
 }
 
 /**
- * 清空内存表。
+ * 清空内存表 + 内存对象存储。
  *
  * ⚠️ 必须**原地清空**而不是 `delete globalThis.__askbuddy_memory`：
  * lib/db/mock.ts 在 import 时就把该对象的引用捕获进模块闭包，delete 之后
  * 后端仍持有旧引用，等于没清（与 tests/setup/unit.ts 是同一个坑）。
+ *
+ * 对象存储（`globalThis.__askbuddy_objects`，见 lib/storage.ts）也要一起清：
+ * 用例之间的隔离必须覆盖「表 + 对象」两层，否则上一用例的原型 HTML 会残留。
  */
 function clearMemory(): void {
   const g = globalThis as Record<string, unknown>;
   const memory = g.__askbuddy_memory as Record<string, unknown[]> | undefined;
-  if (!memory) return;
-  for (const key of Object.keys(memory)) memory[key] = [];
+  if (memory) for (const key of Object.keys(memory)) memory[key] = [];
+  const objects = g.__askbuddy_objects as Record<string, string> | undefined;
+  if (objects) for (const key of Object.keys(objects)) delete objects[key];
 }
 
 async function seedEmpty() {

@@ -68,6 +68,18 @@ function devContextText(messages: ChatMessage[], scenario: string): string {
     const partial = generateDevContextSections(["objective", "scope"], seed);
     return fenced(partial);
   }
+  if (scenario === "inconsistent") {
+    // M5-D2 · C8 专用：故意造一条「验收标准引用了不存在的业务规则」——
+    // 命中 `rule_ac_closure`（error 级），用来驱动定向重算的
+    // 「一致性失败 → 最多升级一次 → 仍失败降 draft」这条路径。
+    //
+    // 无论请求哪些段都返回同样的悬空引用，因此第二轮的「升级重算」**必然**再失败：
+    // 只有这样才能断言「只升级一次」而不是「一直升级直到成功」。
+    const body = generateDevContextSections(["business_rules", "acceptance_criteria"], seed);
+    const ac = body.acceptance_criteria as Array<Record<string, unknown>> | undefined;
+    if (ac?.[0]) ac[0].maps_to = ["BR-999"]; // BR-999 不在 business_rules 里 → 悬空
+    return fenced(body);
+  }
 
   const targeted = parseTargetedSections(user);
   if (targeted.length > 0) {

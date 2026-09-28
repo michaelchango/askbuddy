@@ -130,7 +130,7 @@ export async function sendMessage(
 export async function refreshDevContext(
   request: APIRequestContext,
   requirementId: string,
-  data: { mode?: "targeted" | "full"; sections?: string[] } = {}
+  data: { mode?: "targeted" | "full"; sections?: string[]; changeNote?: string } = {}
 ): Promise<SseEvent[]> {
   const res = await request.post(`/api/requirements/${requirementId}/dev-context/refresh`, {
     data,

@@ -270,4 +270,79 @@ ALTER TABLE dev_contexts
 
 ---
 
-*执行时如与真实代码冲突，以代码为准并回写本文对应条目（沿用原 M5 文档的修订纪律）。*
+## 附：M5 封板复盘（2026-09-28）
+
+对照原 M5 文档《验收标准》（A/B/C/D 四组共 26 条）逐条核对**当前代码与可复跑证据**。
+结论先行：**24 条达标，2 条未达标**（见文末「未达标」），另有 1 条是「本地等价闸门全绿但远端从未跑过」。
+
+复跑命令（任何一条都能独立重放，不依赖本次会话）：
+
+```bash
+npm run verify          # tsc + 170 单测 + lint
+npm run test:cov        # 覆盖率阈值卡口（纯函数模块 ≥95%）
+npm run db:check        # 三层字段契约 24/24/24
+npx playwright test --repeat-each=2   # e2e 16 次（8 用例 × 2），用于无 flaky 证据
+npx tsx scripts/smoke-lifecycle-api.ts        # 真库：生命周期 API（32 断言）
+npx tsx scripts/smoke-devcontext-stale.ts     # 真库：stale JSONB 写入路径（14 断言）
+npx tsx scripts/smoke-devcontext-refresh.ts   # 真库：定向重算 A1（13 断言）
+npx tsx scripts/smoke-ai-provider.ts          # 真实 AI 链路（7 断言）
+```
+
+### A. 核心验收
+
+| # | 标准 | 状态 | 证据 |
+|---|---|---|---|
+| A1 | 改卡片一个字段 → 只有受影响 section 被重算，其他逐字节不变 | ✅ | e2e `02` 首个用例：v1/v2 逐 section 深比较（未受影响段含 `_source` 必须完全一致）；真库 `smoke-devcontext-refresh.ts` 13/13 独立复现同一断言 |
+| A2 | CI 全绿（Vitest + Playwright），无 skip / 无 `.only` | ⚠️ **本地等价闸门全绿；远端从未跑过** | `.github/workflows/ci.yml` 的 verify + e2e 两个 job 与本地命令逐条对应；Playwright 配 `forbidOnly`（CI 下禁止 `.only`），Vitest 在 CI 下默认 `allowOnly=false`。**但仓库未推送，工作流从未真正执行**——这一条严格说未验证 |
+
+### B. 状态机验收
+
+| # | 标准 | 状态 | 证据 |
+|---|---|---|---|
+| B1 | 迁移矩阵与邻接表一致，非法迁移 400 | ✅ | `requirement-lifecycle.spec.ts` 6×6=36 组表驱动全枚举；真库冒烟断言 `created→completed`/`created→review` 均 400 且 `error=invalid_transition` |
+| B2 | `review`/`completed` 永不自动进入 | ✅ | `requirement-lifecycle.spec.ts:151`「100 组伪随机步骤组合（LCG 固定种子）→ 结果恒 ∈ 自动态」；e2e `04` 走完四步后徽标仍是「设计中」，直到点按钮 |
+| B3 | 三层闸门联动（pending suggestion / stale DC / awaitingConfirm） | ✅ | `requirement-status.spec.ts` 逐条构造阻塞场景断言 `code`+`severity`；e2e `04` 断言 `PENDING_SUGGESTION` 时按钮**置灰 + tooltip 给原因** |
+| B4 | 每次迁移都有审计；`completed→designing` 必带 reason | ✅ | 单测断言专用异常类 `LifecycleReasonRequiredError`（→ API 400 而非 500）；真库冒烟逐行核对审计表字段；e2e `02` 断言 `source='change_cascade'` 且 reason 非空 |
+| B5 | 既有四步流程零回归 | ✅ | `steps-harness.spec.ts`（`isFrontierStep` 不变量、`setStepState` 条件写语义、生命周期钩子必须在）+ e2e `01` 全流程 + 真库冒烟 32 断言 |
+| B6 | 状态双源彻底消除（仅 `requirement-status.ts` 可写 lifecycle） | ✅ | 新增 `tests/unit/lifecycle-write-guard.spec.ts`：**源码级 grep 守卫**（含反向控制，防止「谁都不写」也能过）。人工核实：`requirements.ts` 的 4 处 `update("requirements")` 分别写 prototypes 定位、`updatedAt`、`card`、`current_version`，均不含 `lifecycle` |
+
+### C. 变更联动验收
+
+| # | 标准 | 状态 | 证据 |
+|---|---|---|---|
+| C1 | DevContext 影响判定**全程无 LLM** | ✅ | `resolveAffectedSections` 是同步纯函数；新增契约测试「影响判定模块不得 import `@/lib/ai`」（源码级守卫，覆盖 `devcontext-impact.ts` + `devcontext.ts`）。原文档要求的「e2e 数 AI 调用次数」未做——mock 模式下调用计数不可观测，故改用更强的 import 级禁令 |
+| C2 | 映射表覆盖性契约测试全绿 | ✅ | `tests/contract/impact-map.spec.ts` **8 条**（原文档写 6 条，实际多出「闭包无环收敛」「ALWAYS_RECOMPUTE 恒并入」「C1 无 LLM 守卫」） |
+| C3 | 10 组金样本全部匹配 | ✅ | `devcontext-impact.spec.ts`：`GOLDEN` 表 **9 条** + 「未知 trigger → FULL_RECOMPUTE」独立用例 = 计划书要求的 **10 种形态**（第 10 条以独立用例实现，未放进数组） |
+| C4 | 未知 trigger → fail-safe 全量 + warn，绝不静默跳过 | ✅ | 专项用例断言 `fullRecompute=true` 且 `unmapped` 列出原始 trigger；边界取「当前实际存在的 section」 |
+| C5 | `prd.markdown` 直接影响为空集（AD-2） | ✅ | 契约测试 + 金样本第 7 条（`["meta","references"]`） |
+| C6 | stale 标记不自动重算，由用户决策 | ✅ | e2e `02` 新增断言：变更完成后、点「重算」之前 `version` 未变且 `content` 逐字节未变 |
+| C7 | MCP 返回体携带 `maybe_stale`/`stale_sections`/`warning` | ✅ | e2e `05` 第 5 步：变更后 `_meta.maybe_stale=true`、`warning` 含「尚未重算」且非空 |
+| C8 | 一致性失败最多升级一次并降级 draft | ✅ | 新增 mock 场景 `inconsistent`（AC 悬空引用 BR-999）+ e2e `02` 第二个用例：断言 `escalated=true`、`status=draft`、未受影响段仍逐字节保留 |
+
+### D. Provider 与测试基建验收
+
+| # | 标准 | 状态 | 证据 |
+|---|---|---|---|
+| D1 | `callAI`/`streamAI` 签名与返回结构未变 | ✅ | `ai-provider.spec.ts` 运行时字段断言 + 全仓引用点未改（`card.ts`/`change-analyzer.ts`/`lib/ai/steps/*` 零改动） |
+| D2 | 无 Key 时全链路可跑通（mock 兜底） | ✅ | `resolveProvider` 第 4 条回落 mock；CI 全程不配凭据 |
+| D3 | mock 确定性：同输入 100 次逐字节相同 + 源码无随机源 | ✅ | `ai-provider.spec.ts` 100 次循环 + 夹具源码静态扫描（扫描前剥注释） |
+| D4 | 重试 3 次 + 指数退避 + 错误分类 | ✅ | `ai-provider.spec.ts` 四条（3 次尝试 / 4xx 不重试 / signal abort 立即放弃 / 分类映射） |
+| D5 | 覆盖率：全局 ≥60% 且两个纯函数模块 ≥95% | ⚠️ **部分达标** | 两个纯函数模块**实测 100%** 且阈值卡口生效；**全局 60% 未启用**（实测 ≈36%，未覆盖大头是 IO/编排层）。这是有意偏差，理由见 `docs/testing.md` §2 |
+| D6 | e2e 全绿且**连跑多次一致** | ✅ | `--repeat-each=2` → **16/16 通过**。首次执行**当场抓到 flaky**（见下「e2e 抓到的第 4 个缺陷」），修复后稳定 |
+| D7 | `/api/test/seed` 在非 mock / 生产环境 404 | ✅ | 新增 `tests/unit/seed-guard.spec.ts` 4 条：生产 404（三方法）、`USE_MOCK!=true` 404、**反向控制**（合法环境须走到业务 400，防止「永远 404」的空转守卫） |
+
+### 未达标的两条（明确记账，不含糊）
+
+1. **D5 全局覆盖率 60%**：实测 ≈36%。未覆盖的大头是 `lib/ai/steps`、`lib/ai/context`、`lib/services` 等 IO/编排层——给它们设阈值只会逼出「为覆盖率而 mock 一堆 IO」的假测试。当前策略：**纯函数模块 100% + 阈值卡口**，其余靠 e2e 与真库冒烟。若坚持要 60%，需要的是补 `lib/ai/context/builder`、`lib/services/outputs` 等层的真实用例（约 1~2 天），而不是调阈值。
+2. **A2 远端 CI 从未执行**：工作流文件与本地命令逐条对应，但仓库未推送，没有任何一次真实运行记录。**在第一次 push 之前，不能说 CI 是绿的。**
+
+### e2e 在封板复盘期间抓到的第 4 个缺陷（已修）
+
+`--repeat-each=2` 的第二遍**必失败**（第一遍必成功）：`requirement_prototype?includeHtml=true` 返回空 HTML。
+
+根因：`lib/storage.ts` 的 mock 对象存储用**模块局部变量** `mem`，而 mock DB 挂在 `globalThis.__askbuddy_memory` 上。Next dev 在路由首次编译/模块重评估后会重置模块局部状态——于是「先生成原型 → 后读原型」只要跨过一次编译边界，HTML 就静默变空（DB 行还在、`html_storage_key` 也在，全程无报错）。修法：把 `mem` 也挂到 `globalThis.__askbuddy_objects`，让 mock 层的持久性与 DB 对齐；seed 的清理逻辑同时清两层。
+
+> 这条再次印证 D6 这类「重复执行」检查的价值：**它抓的不是逻辑错，而是环境/生命周期错**——
+> 单遍跑永远绿，只有重复才暴露。
+
+*本复盘以代码与可复跑命令为准；如与本文冲突，以代码为准并回写本节。*

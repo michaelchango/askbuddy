@@ -9,6 +9,8 @@
 
 import { test, vi } from "vitest";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { SECTION_KEYS } from "@/lib/schemas/devcontext";
 import {
   ALL_SECTIONS,
@@ -149,6 +151,35 @@ test("卡片字段全覆盖：每个 CARD_FIELDS 字段都有对应 card.<field>
     CARD_FIELDS.length,
     "card.* trigger 数量与 CARD_FIELDS 数量不一致（多出的 trigger 是死代码）"
   );
+});
+
+// ────────────────── C1：影响判定与 stale 标记**全程无 LLM** ──────────────────
+
+test("★ C1：影响判定模块不得依赖 AI 客户端（源码级守卫）", () => {
+  // 标准原文：DevContext 影响判定**全程无 LLM 调用**。
+  //
+  // 为什么用源码扫描而不是「数调用次数」：计数只能在 e2e 里做，而 e2e 跑的是 mock
+  // provider——mock 模式下"有没有调 LLM"这件事在运行时是隐形的（mock 永远成功）。
+  // 直接禁止 import AI 客户端，才能在任何改动之后立刻拦住「顺手在这里加一次 AI 调用」。
+  //
+  // 注：`resolveAffectedSections` 本身是**同步纯函数**（签名即证明），
+  // 这条测试守的是「它的调用方（标记链路）也别偷偷引入 AI」。
+  for (const rel of [
+    "lib/services/devcontext-impact.ts",
+    "lib/services/devcontext.ts",
+  ]) {
+    const src = fs.readFileSync(path.resolve(process.cwd(), rel), "utf8");
+    const importLines = src
+      .split("\n")
+      .filter((l) => /^\s*import\b/.test(l) || /from\s+".*"/.test(l));
+    const offenders = importLines.filter((l) => l.includes("@/lib/ai"));
+    assert.deepEqual(
+      offenders,
+      [],
+      `${rel} 引用了 AI 层：${offenders.join(" | ")}\n` +
+        `影响判定与 stale 标记必须是确定性的（C1）；AI 调用只允许出现在 lib/ai/** 里。`
+    );
+  }
 });
 
 test("ALWAYS_RECOMPUTE 恒被并入结果（任何 trigger 组合）", () => {
