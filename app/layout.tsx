@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
-import Script from "next/script";
 import { ViewTransitions } from "@/components/view-transitions";
 import "./globals.css";
 
@@ -29,9 +28,6 @@ export default function RootLayout({
     <html lang="zh-CN" className={plusJakartaSans.variable}>
       <body>
         <ViewTransitions>{children}</ViewTransitions>
-        {/* Vercel Web Analytics：无需 npm 包，直接引用平台提供的 insights 脚本。
-            需在 Vercel 项目 → Analytics 开启 Web Analytics 才会收集数据。 */}
-        <Script src="/_vercel/insights/script.js" strategy="afterInteractive" />
       </body>
     </html>
   );

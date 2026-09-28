@@ -1,5 +1,5 @@
 // 内部体验统计页：查看有多少人来体验。
-// 访问需带口令：/admin/visits?key=<ADMIN_KEY>（在 Vercel 环境变量配置 ADMIN_KEY）。
+// 访问需带口令：/admin/visits?key=<ADMIN_KEY>（在 CloudBase 云托管环境变量配置 ADMIN_KEY）。
 import { getVisitSummary } from "@/lib/services/visits";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +32,7 @@ export default async function AdminVisitsPage({
     return (
       <Notice>
         <p>
-          未设置访问口令。请在 Vercel 环境变量中配置{" "}
+          未设置访问口令。请在 CloudBase 云托管的环境变量中配置{" "}
           <code className="rounded bg-[#F2F0EB] px-1.5 py-0.5">ADMIN_KEY</code>，然后以{" "}
           <code className="rounded bg-[#F2F0EB] px-1.5 py-0.5">/admin/visits?key=你的口令</code>{" "}
           访问。
@@ -128,8 +128,7 @@ export default async function AdminVisitsPage({
       </table>
 
       <p className="mt-8 text-[13px] text-[#78746C]">
-        说明：本页统计「填昵称进入体验」的次数；页面级流量（PV/UV、来源、设备）请在 Vercel →
-        Analytics 查看。
+        说明：本页统计「填昵称进入体验」的次数。
       </p>
     </main>
   );
