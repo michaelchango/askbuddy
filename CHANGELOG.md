@@ -2,6 +2,32 @@
 
 本文件记录每次版本（M 阶段）的更新说明，远端 GitHub 与本地保持同步。
 
+## 下一步：M5 状态机 + 变更联动 + 测试基建（规划中）
+
+- 六态需求生命周期机 + 与四步阶段闸门分层共存；变更联动确定性扩展 DevContext（影响映射表 + 定向 section 重算 + `maybe_stale` 标记）；多 provider AI 抽象层；Vitest + Playwright 测试基建。
+- 依据 `开发计划/M5_状态机与变更联动与测试基建.md`。本文件与 `待办事项.md`「〇·续」同步跟踪。
+
+## M4 — 知识复利（项目级知识库 + 语义检索）(2026-09)
+
+- 基于 CloudBase PostgreSQL + pgvector 新增项目级知识库：建 `knowledge_entries` 表（`embedding vector(1024)` + 三类 CHECK + 索引）。
+- Embedding 接入层 `lib/ai/embedding.ts`（腾讯 TokenHub 兼容协议，模型 `kinfra-text-embedding-0.6b`，`EMBEDDING_DIMENSIONS=1024`），非对称密钥（`TOKENHUB_API_KEY`），TTL 冷却 + 确定性 mock 降级。
+- 知识服务 `lib/services/knowledge.ts`（CRUD/软删/语义检索余弦下推/关键词兜底/召回/`backfillEmbeddings`）+ `lib/schemas/knowledge.ts`。
+- 知识沉淀 `lib/services/knowledge-extractor.ts`（三道去重闸）+ 触发端点 `app/api/projects/[id]/knowledge/extract`。
+- RAG 注入 `lib/ai/context/builder.ts` 并行召回 + `lib/ai/context/budget.ts`（12000 字符预算）+ 5 个 prompt 渲染知识段 + DevContext `_source.knowledge_ids` 真实填值。
+- 项目知识 API + MCP `search_knowledge`（由 M2 占位升级为真实语义检索，POST `projectId`+`query`）+ 知识库管理 UI（`components/knowledge/` + project-shell 导航）。
+- 详见 `docs/knowledge-base.md`、`待办事项.md`「〇」节、`.codebuddy/plans/M4_知识复利_开发计划_681069d6.md`。
+
+## M3 — 条目级 HITL + 分级溯源 (2026-08-09/10)
+
+- DevContext `_source` 分级溯源（M0/M1/M2 三级）贯穿 cards/research/design/prd/devcontext。
+- 条目级决策/建议表 `suggestions` / `decisions`；`suggestions.target_path` 为后续 M5 变更联动定位依据。
+- 注：HITL 建议卡（proposals）已于 2026-08 回退，恢复「下一阶段确认闸门」，产物直写库。
+
+## M2 — DevContext 双产物与 MCP 扩展 (2026-08)
+
+- DevContext 服务 `lib/services/devcontext.ts`：版本化落库 + 16 段内容 + render/validate/source 三件套 + 测试。
+- MCP server `mcp/server.ts`（v2）实测注册 13 个 tool（含 `requirement_solution`、`requirement_dev_context`、4 个 `dev_context_*` 分段工具、`search_knowledge`）。
+
 ## M1 — 数据底座 NoSQL → CloudBase PostgreSQL（经网关 SQL 接口，不依赖 DATABASE_URL）(2026-08-06)
 
 - **数据层四后端一套契约**：`mock` / `nosql` / `postgres`(直连 PG 协议) / `cloudbase`(网关 SQL 接口)。新增 `lib/db/cloudbase.ts`。
