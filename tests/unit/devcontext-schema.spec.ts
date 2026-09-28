@@ -9,7 +9,7 @@
 //
 // 运行：npx tsx --test lib/schemas/devcontext.test.ts
 
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   DevContextBodySchema,

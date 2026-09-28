@@ -8,7 +8,7 @@
 //
 // 运行：npx tsx --test lib/ai/steps/knowledge-trace.test.ts
 
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { filterKnowledgeIds, sanitizeKnowledgeIds } from "@/lib/ai/steps/knowledge-trace";
 import type { DevContextBody } from "@/lib/schemas/devcontext";

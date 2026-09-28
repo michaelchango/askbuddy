@@ -5,7 +5,7 @@
 //
 // 运行：npx tsx --test lib/ai/context/builder.test.ts
 
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { assertNoPrdUpstream } from "@/lib/ai/context/ad2";
 

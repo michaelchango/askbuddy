@@ -6,7 +6,7 @@
 //
 // 运行：npx tsx --test lib/services/devcontext-validate.test.ts
 
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 
 // checkConsistency 内部会读 db.get("prds", ...)，用 mock 后端且不加种子，使其返回
