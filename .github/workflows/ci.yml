@@ -1,0 +1,80 @@
+# CI 编排（M5-D5 · P4-6）。
+#
+# 两个 job，刻意**串行**（needs）：e2e 很贵，没必要在类型都不过的提交上烧浏览器时间。
+#
+# 【CI 里不配任何真实凭据】这是硬约束：
+#   - 单测走 mock（tests/setup/unit.ts 强制 USE_MOCK/AI_MOCK = true）；
+#   - e2e 由 playwright.config.ts 的 webServer 起 scripts/dev-e2e.mjs（同样全 mock）。
+#   所以 CI 不会碰 CloudBase、不烧 token、也不会往真库写数据。
+#
+# 失败时上传 artifacts（Playwright 的 trace/video/screenshot）——没有它，
+# CI 上的 e2e 失败基本无法定位。
+name: CI
+
+on:
+  push:
+    branches: [master, main, "feat/**"]
+  pull_request:
+
+# 同一分支的新提交取消旧的运行（省钱省时间）
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: 类型 + Lint + 单测（全 mock）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: 单测 + 契约测试（含覆盖率阈值卡口）
+        run: npm run test:cov
+
+  e2e:
+    name: e2e（Playwright · chromium）
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 20
+    env:
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 安装 chromium（含系统依赖）
+        run: npx playwright install --with-deps chromium
+
+      - name: 运行 e2e
+        run: npm run test:e2e
+
+      - name: 上传失败产物（trace / video / screenshot）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

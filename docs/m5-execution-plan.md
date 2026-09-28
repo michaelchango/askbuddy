@@ -173,7 +173,17 @@
 
 **Phase 4 闸门 = M5 整体验收**：A1（定向重算逐字节断言）+ A2（CI 全绿无 skip/only）+ B1–B6 + C1–C8 + D1–D7（原验收表全文有效）。
 
-> 🚧 **Phase 4 部分交付（2026-09-28）**——已做 P4-1 / P4-2 / P4-3 / P4-7；**P4-4 ~ P4-6（e2e + CI）待定**：
+> ✅ **Phase 4 已交付（2026-09-28）**——P4-1 ~ P4-7 全部落地；**M5 五个 Phase 全部完成**。
+> - **P4-4 seed 通道**：`app/api/test/seed/route.ts`（双重守卫 + 5 个预设：`empty`/`card-ready`/`full-flow`/`review-blocked`/`draft-devcontext` + 只读内省 `GET ?requirementId=` + `withToken` 签发 PAT）。预设**复用真实服务**（`createProject` / `createRequirement` / `saveResearchAnalysis` / `saveSolution` / `savePrototypeVersion` / `savePRD` / `runDevContextGeneration` / `transitionLifecycle`），不手写原始行。
+> - **P4-5 五个场景**：`tests/e2e/01..05` **7 条用例全部通过**（≈42s）。覆盖见 `docs/testing.md` 第 7.2 节。配套 `playwright.config.ts`（workers:1 / 仅 chromium / trace+video 按需）+ `scripts/dev-e2e.mjs`（零依赖跨平台全 mock 启动器）。
+> - **P4-6 CI**：`.github/workflows/ci.yml`，两个**串行** job —— `verify`（typecheck + lint + `test:cov`）→ `e2e`（playwright chromium + 失败上传 artifacts）。CI 全程不配任何真实凭据。
+> - 🐛 **e2e 抓到 3 个真实缺陷（全部已修，并留在测试里当护栏）**：
+>   1. `saveDevContext` 无条件给**所有**段落注入 `_source.conversation_turn` → 定向重算会改写未受影响段的溯源（违反 A1）。修：`injectTurnsFor` 限定注入范围。
+>   2. `syncLifecycleFromSteps` 用 `getLifecycle()` 判断「是否一致」，而该函数在列值为空时回落到实时派生 → **列永远写不进去、派生审计行永远不产生**（PG 的 `DEFAULT 'created'` 掩盖了它，mock 后端暴露）。修：比较列里的真实值，为空时按「首次落库」记 `from_state=null`。
+>   3. MCP 工具 `requirement_prototype` 曾硬编码 `?includeHtml=true`，与路由设计、`docs/mcp-guide.md` 和「保护 AI 上下文窗口」的意图**全部矛盾**。修：默认轻量 + 显式 `includeHtml` 参数。
+> - 📌 与主计划的偏差：① e2e 的 UI 交互部分用 HTTP 驱动（断言目标是状态机行为，敲输入框只会引入 flaky；按钮点击由场景 04 覆盖）；② `full-flow` 预设额外造齐四份上游产物（否则侧栏条目禁用，任何断言 DevContext 面板的用例都点不进去）；③ 新增 `draft-devcontext` 预设（计划里没有，场景 04 需要「draft → warn 可越过」的起点）。
+
+> 📦 **Phase 4 中途进展记录（保留以便追溯）**——已做 P4-1 / P4-2 / P4-3 / P4-7；**P4-4 ~ P4-6（e2e + CI）待定**：
 > - ✅ **P4-1 契约测试**：`tests/contract/impact-map.spec.ts`（7 条：Trigger 全覆盖 / section 名合法 /
 >   反向覆盖 / PRD 隔离 / 闭包无环收敛 / 卡片字段反射全覆盖 / ALWAYS_RECOMPUTE 恒并入）。
 > - ✅ **P4-2 影响解析金样本**：`tests/unit/devcontext-impact.spec.ts`（**25 条**：9 组金样本 +

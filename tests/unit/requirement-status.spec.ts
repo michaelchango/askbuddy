@@ -256,6 +256,26 @@ test("隐式同步：自动态间推进 → 落库 + 审计行（source=derived,
   assert.equal(row.actor, "system");
 });
 
+test("★ 隐式同步：列值为空（存量未回填 / mock 后端）→ 首次落库，审计 from_state=null", async () => {
+  // 回归护栏：曾经这里用 getLifecycle() 做「已一致就不写」的判断，而它在列空时
+  // 会回落到实时派生 → 恒等 → 列永远写不进去、派生审计行永不产生。
+  setup({
+    requirement: { id: "req-1", archived_at: null }, // 注意：没有 lifecycle 字段
+    conversationCount: 1,
+    steps: stepsOf([{ step: "dialoguing", state: "in_progress" }]),
+  });
+  await syncLifecycleFromSteps("req-1");
+
+  assert.equal(dbMock.update.mock.calls.length, 1, "列值为空时必须落库");
+  const patch = dbMock.update.mock.calls[0][2] as Record<string, unknown>;
+  assert.equal(patch.lifecycle, "dialoguing");
+
+  const audit = dbMock.insert.mock.calls[0][1] as Record<string, unknown>;
+  assert.equal(audit.from_state, null, "首次落库没有「前一态」，必须记 null 而不是编一个");
+  assert.equal(audit.to_state, "dialoguing");
+  assert.equal(audit.source, "derived");
+});
+
 test("隐式同步：内部异常被吞掉（不抛、不写库），绝不阻断步骤推进", async () => {
   // 「派生不可达」分支需要绕过人工态短路才构造得出，落地成本高于收益；
   // 这里钉死的是另一半更关键的契约：同步链路的任何异常都不得外溢。

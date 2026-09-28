@@ -479,6 +479,9 @@ export async function regenerateSections(
           note: opts.changeNote,
           clearStale: false, // 只重算了部分段，交下面精确清理
           changelogDetail,
+          // 只给被重算的段补填 conversation_turn：未受影响段的 _source 必须逐字节不变
+          //（A1 验收标准；e2e 场景 02 会发现漏传——这正是它存在的意义）
+          injectTurnsFor: targets,
         }
       );
 

@@ -10,7 +10,7 @@
 | 契约测试 | `tests/contract/**` | 随 `npm test` 一起跑 | **纯结构断言**，毫秒级，专拦「加了东西忘了同步」 |
 | 单元测试 | `tests/unit/**` | 随 `npm test` 一起跑 | mock 掉 db / AI，零外部依赖 |
 | 真库冒烟 | `scripts/smoke-*.ts` | `npx tsx scripts/smoke-xxx.ts`（需先 `npm run dev`） | **打真库 / 真 HTTP / 真 AI**，不在 CI 跑 |
-| e2e | `tests/e2e/**` | 未建（见第 7 节） | Playwright，计划延后 |
+| e2e | `tests/e2e/**` | `npm run test:e2e` | Playwright + chromium，**全 mock**，自动起专用的 dev server |
 
 ```bash
 npm test                      # 全量单测 + 契约测试（vitest run）
@@ -150,18 +150,48 @@ npm run test:parity           # db 下推对拍（独立的 tsx --test 体系）
   显著高于对一个 `true` 的解读；
 - warning 里带**可执行的下一步**（refresh 端点），否则 Agent 只能干瞪眼。
 
-## 7. 尚未建成：Playwright e2e（D5）
+## 7. Playwright e2e（D5）
 
-计划中的 5 组场景（`tests/e2e/01..05`）与 seed 通道（`app/api/test/seed/route.ts`）
-**尚未实现**，原因与前置条件：
+```bash
+npm run dev:e2e          # 可选：手动起 e2e 专用 dev server（全 mock，端口 3100）
+npm run test:e2e         # 跑全部场景（webServer 会自动起/复用上面那个服务）
+npm run test:e2e:report  # 看上一次的 HTML 报告
+```
 
-- Playwright 及其浏览器**尚未安装**（会引入新依赖 + 下载浏览器）；
-- 计划书 §6「裁剪选项」明确把 `P4-4~P4-6（e2e/CI）` 列为**可延后到上线后**的项；
-- **A1 这条最硬的验收标准目前由真库冒烟覆盖**（`smoke-devcontext-refresh.ts` 的
-  「未受影响段逐字节不变」），不是空白。
+### 7.1 三个必须知道的约束
 
-落地时的三个坑（已从计划书里确认，避免重踩）：
-1. seed 必须走 **HTTP**：mock db 是 dev server 进程的内存表，Playwright 进程访问不到；
-2. 必须 `workers: 1`：所有 worker 共享同一份内存表，并行会互相污染；
-3. seed 端点必须**双重守卫**（`USE_MOCK==='true'` 且非 production），否则就是一个
-   能往数据库随便写的未鉴权端点。
+1. **seed 必须走 HTTP**：mock 数据库是 dev server 进程的内存表，Playwright 测试进程
+   访问不到（`globalThis.__askbuddy_memory` 只在同进程内共享）。所以 `app/api/test/seed/route.ts`
+   是唯一的「把库摆成某个状态」的通道，它同时提供**只读内省**（`GET ?requirementId=`），
+   让断言读真实库内状态而不是从 UI 反推。
+2. **必须 `workers: 1`**：所有 worker 共享同一份内存表，并行会互相污染。
+3. **seed 端点双重守卫**（`USE_MOCK==='true'` 且非 production，否则 404）。
+   另外：e2e 的会话 Cookie 值必须**等于 seed 数据的属主 uid**（`mock-user-001`），
+   否则归属校验会把 seed 出来的数据全判成 404（见 `tests/e2e/fixtures/seed.ts::useE2eSession`）。
+
+### 7.2 五个场景覆盖什么
+
+| 文件 | 覆盖 | 关键断言 |
+|---|---|---|
+| `01-workflow` | 四步工作流 + 生命周期 | ★ **阶段不自动推进**（本步未确认，下游必须仍 `not_started`）；徽标 待开始→访谈→设计中→待复核→已交付；审计含 derived 与 manual 两类 |
+| `02-change-cascade` | **核心验收 A1** | 变更血缘载荷深等于闭包结果；★ **未受影响段逐字节不变（含 `_source`）**；changelog 与实测对账；生命周期被打回且审计 `source='change_cascade'` |
+| `03-export` | 导出五格式 | 每种格式可下载且非空；JSON 通过 `DevContextSchema`；★ 五格式的业务规则条数互相一致 |
+| `04-lifecycle` | 闸门与人工流转 | block 级闸门 → 按钮**置灰 + tooltip 给原因**；提交复核→打回→归档→解档闭环；draft 只给 warn（可越过） |
+| `05-mcp-smoke` | MCP 接口层 | 工具数 **13**；`list_projects/list_requirements` 含 seed 数据；原型**默认不含 HTML**、`includeHtml:true` 才含；分段工具只返回对应段；★ 变更后 `_meta.maybe_stale=true` 且 `warning` 非空 |
+
+### 7.3 e2e 已经抓到的两个真实缺陷（留在测试里的理由）
+
+1. **`saveDevContext` 无条件给所有段落注入 `_source.conversation_turn`** —— 定向重算
+   只重算几段，却把未受影响段的溯源一起改写（`null → 当前轮次`），直接违反 A1。
+   修复：`SaveMetaInput.injectTurnsFor` 限制注入范围。
+2. **`syncLifecycleFromSteps` 用 `getLifecycle()` 判断「是否一致」** —— 该函数在列值为空时
+   会回落到实时派生，于是「已一致」恒成立：**列永远写不进去、派生审计行永远不产生**。
+   PG 因列有 `DEFAULT 'created'` 掩盖了这点，mock 后端把它暴露出来。修复：改为比较**列里
+   的真实值**，为空时视为「首次落库」并以 `from_state=null` 记审计。
+
+第 3 个由 e2e 暴露的**既有不一致**：MCP 工具 `requirement_prototype` 曾硬编码
+`?includeHtml=true`（与路由设计、本文档、以及「保护 AI 上下文窗口」的设计意图全部矛盾），
+已改为默认轻量 + 显式 `includeHtml` 参数。
+
+> 这三个都印证了同一件事：**结构断言（单测/契约）证明不了「真链路没被改坏」，
+> 只有端到端跑一遍才行。**

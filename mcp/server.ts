@@ -71,10 +71,17 @@ server.tool(
 
 server.tool(
   "requirement_prototype",
-  "获取 AskBuddy 需求的可交互 HTML 原型（含页面结构 JSON）。默认返回完整 HTML。",
-  { requirementId: z.string().describe("需求 ID") },
-  async ({ requirementId }) => {
-    const data = await callPlatform(`/api/mcp/requirement/${requirementId}/prototype?includeHtml=true`);
+  "获取 AskBuddy 需求的交互原型（页面结构 JSON + 版本列表）。**默认不返回 HTML**——完整 HTML 动辄几十 KB，会直接吃掉 AI 的上下文预算；确需完整 HTML 时显式传 includeHtml=true。",
+  {
+    requirementId: z.string().describe("需求 ID"),
+    includeHtml: z.boolean().optional().describe("是否同时返回完整 HTML，默认 false"),
+  },
+  async ({ requirementId, includeHtml }) => {
+    // 默认轻量：与路由（app/api/mcp/requirement/[id]/prototype）和 docs/mcp-guide.md 的口径一致。
+    // 历史上这里硬编码了 ?includeHtml=true，等于把「上下文窗口保护」这条设计直接作废
+    // —— 由 e2e 场景 05 发现并钉死。
+    const qs = includeHtml === true ? "?includeHtml=true" : "";
+    const data = await callPlatform(`/api/mcp/requirement/${requirementId}/prototype${qs}`);
     return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
   }
 );

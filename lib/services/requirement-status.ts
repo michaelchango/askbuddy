@@ -205,25 +205,36 @@ export async function restoreFromArchive(
  */
 export async function syncLifecycleFromSteps(requirementId: string): Promise<void> {
   try {
-    const current = await getLifecycle(requirementId);
-    if (MANUAL_STATES.has(current)) return;
-
     const row = await db.get<RequirementRow>("requirements", requirementId);
+    if (!row) return; // 需求已删（步骤行可能是孤儿）：静默返回，不抛
+    const persisted = isLifecycle(row.lifecycle) ? row.lifecycle : null;
+
+    // 保守规则 1：人工态优先——隐式同步永不覆盖人的决定
+    if (persisted && MANUAL_STATES.has(persisted)) return;
+
     const derived = deriveLifecycle({
-      archivedAt: row?.archived_at ?? null,
+      archivedAt: row.archived_at ?? null,
       hasConversation: await hasConversation(requirementId),
       steps: await getSteps(requirementId),
     });
-    if (derived === current) return;
 
-    if (canTransition(current, derived)) {
-      await writeLifecycle(requirementId, current, derived, {
+    // 保守规则 2：已一致 → 不写（避免每次步骤更新都产生审计噪音）
+    if (persisted === derived) return;
+
+    // ⚠️ 必须拿**列里的值**做比较，不能用 getLifecycle()：
+    //    后者在列值为空时会回落到「实时派生」，于是 `persisted === derived` 恒成立
+    //    → 列永远写不进去、派生审计行永远不产生。
+    //    PG 因为列有 DEFAULT 'created' 把这个问题掩盖了；mock 后端（无 SQL 默认值）
+    //    会直接暴露——是 e2e 场景 01 发现的。
+    if (!persisted || canTransition(persisted, derived)) {
+      // persisted 为空 = 首次落库（存量未回填 / mock 后端），审计行 from_state 记 null
+      await writeLifecycle(requirementId, persisted, derived, {
         actor: "system",
         source: "derived",
       });
     } else {
       console.warn(
-        `[lifecycle] 派生态不可达：${requirementId} ${current} → ${derived}（保持原态）`
+        `[lifecycle] 派生态不可达：${requirementId} ${persisted} → ${derived}（保持原态）`
       );
     }
   } catch (e) {

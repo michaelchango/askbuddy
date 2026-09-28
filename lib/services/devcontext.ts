@@ -61,6 +61,17 @@ export interface SaveMetaInput {
    * 缺省写入 meta.changelog（版本号/时间/触发来源）。
    */
   changelogDetail?: unknown;
+  /**
+   * M5-D2：把 `_source.conversation_turn` 的补填**限制在这些 section 内**。
+   *
+   * 【为什么需要】`injectConversationTurn` 是「凡 `conversation_turn` 为空就填」的
+   * 全量递归。全量生成时这是对的；但**定向重算**只重算几段，若仍全量注入，
+   * 未受影响段落的 `_source` 会被顺手改写（`null → 当前轮次`）——这正是 A1
+   * 「未受影响段逐字节不变（含 `_source`）」要防的事：无谓刷新会把 M3 的溯源链
+   * 悄悄改写成「本轮生成的」，让「这条规则来自第几轮对话」失去意义。
+   * 缺省（不传）= 全量注入，与改造前行为一致。
+   */
+  injectTurnsFor?: SectionKey[];
 }
 
 /** 读取开发上下文：不传 version 读主表；传了从 dev_context_versions 用复合 id 精确取。 */
@@ -190,8 +201,19 @@ export async function saveDevContext(
   });
 
   // M3 · 填充 DevContext 各条目 _source.conversation_turn（分级溯源 + 验收红线回溯）
+  // M5-D2：定向重算只补填被重算的段，避免改写未受影响段的溯源（见 injectTurnsFor 注释）
   const turn = (await getConversationTurn(requirementId).catch(() => 0)) ?? 0;
-  if (turn > 0) injectConversationTurn(full, turn);
+  if (turn > 0) {
+    const scope = meta.injectTurnsFor;
+    if (scope?.length) {
+      const fullRec = full as unknown as Record<string, unknown>;
+      for (const key of scope) {
+        if (key in fullRec) injectConversationTurn(fullRec[key], turn);
+      }
+    } else {
+      injectConversationTurn(full, turn);
+    }
+  }
 
   // 写版本历史（异常容错：版本历史写入失败不阻断主表更新）
   try {
