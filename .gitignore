@@ -8,6 +8,10 @@ node_modules/
 out/
 build/
 
+# 测试覆盖率报告（vitest --coverage 生成物，不是工程资产）
+coverage/
+*.lcov
+
 # 环境变量：.env.local 含真实 CLOUDBASE_SECRET，严禁入库
 .env.local
 .env*.local
