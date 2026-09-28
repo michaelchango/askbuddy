@@ -2,6 +2,8 @@ import path from "node:path";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // 云托管（容器型）部署需要 standalone 产物；Vercel 会忽略该选项，不影响现有部署。
+  output: "standalone",
   reactStrictMode: true,
   webpack: (config, { dir }) => {
     // 显式注册 @ → 项目根 的 webpack alias。

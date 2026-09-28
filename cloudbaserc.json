@@ -1,0 +1,6 @@
+{
+  "envId": "askbuddy-d2gv2tz9xea0ff925",
+  "cloudrun": {
+    "name": "askbuddy-web"
+  }
+}
