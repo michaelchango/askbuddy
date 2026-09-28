@@ -5,6 +5,7 @@ import { callAI } from "@/lib/ai/client";
 import { getRequirement } from "./requirements";
 import { listConversations } from "./conversations";
 import { db } from "@/lib/db";
+import type { ImpactTrigger } from "./devcontext-impact";
 
 export interface ChangeAnalysis {
   affectedOutputs: string[]; // ["card", "research_analysis", "design", "prd"]
@@ -14,6 +15,38 @@ export interface ChangeAnalysis {
     description: string;
   }>;
   summary: string;
+  /** M5-D2：由 affectedOutputs **确定性**推导的产物级影响源（不掺 LLM 判断）。 */
+  triggers?: ImpactTrigger[];
+}
+
+/**
+ * 受影响输出物 → DevContext 影响源（M5-D2）。纯函数、封闭映射，确定性。
+ *
+ * - 一个封闭的 4→N 映射，不需要 LLM 再判断一次；
+ * - `design` 必须展开为两个 trigger：`design` 在 OUTPUT_DEFS 里本就是**组类型**
+ *   （含 solution / prototype 两个 subType），保持这个粒度才对得上真实产物结构；
+ * - `card` 返回空集：卡片有更精确的字段级 diff（`applyCardChange.changedFields`），
+ *   在这里再产一次只会得到粗糙的重复 trigger。
+ */
+const OUTPUT_TRIGGERS: Record<string, ImpactTrigger[]> = {
+  research_analysis: ["research.report", "research.user_stories", "research.features"],
+  design: ["solution.doc", "prototype.structure"],
+  prd: ["prd.markdown"],
+  // 补全（超出原文档的 4 行）：原文档假设 prototype 恒与 design 同时出现，
+  // 但路由会把 prototype 单独补进 affectedOutputs，漏掉这一行就是一个静默的重算缺口。
+  prototype: ["prototype.structure"],
+  card: [],
+};
+
+/** 受影响输出物列表 → 去重后的影响源（保持 OUTPUT_TRIGGERS 的声明顺序）。 */
+export function outputsToTriggers(affectedOutputs: string[]): ImpactTrigger[] {
+  const out: ImpactTrigger[] = [];
+  for (const o of affectedOutputs) {
+    for (const t of OUTPUT_TRIGGERS[o] ?? []) {
+      if (!out.includes(t)) out.push(t);
+    }
+  }
+  return out;
 }
 
 // 生成物名称（区别于阶段名称：调研报告≠调研分析、方案文档≠方案设计）
@@ -214,6 +247,8 @@ export async function analyzeChanges(
       affectedOutputs: affected,
       changes,
       summary: typeof parsed.summary === "string" ? parsed.summary : "",
+      // M5-D2：产物级 trigger 在这里一次性推导好，路由不必再关心映射细节
+      triggers: outputsToTriggers(affected),
     };
   } catch {
     return null;

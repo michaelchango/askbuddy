@@ -14,6 +14,11 @@ export interface PromptVars {
   // 两者同时存在时，prompt 应切换为"基于现有文档做精准修改"而非全新生成。
   changeNote?: string;
   existingDoc?: string;
+  /**
+   * M5-D2 定向重算：只要求模型输出这些 section（其余由系统用原值补齐）。
+   * 缺省 = 不限（全量输出）。设置后 prompt 会显式约束顶层 key 集合。
+   */
+  sections?: string[];
   // M4 知识复利：检索到的项目级知识（注入 prompt，可溯源）。
   knowledge?: KnowledgeRef[];
   // M4 知识沉淀：待抽取的已确认决策列表（knowledge_extract 任务专用）。

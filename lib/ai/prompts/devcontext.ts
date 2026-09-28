@@ -118,11 +118,17 @@ id 命名强制规范（用于交叉引用）：业务规则 \`BR-001\` 起、�
     // 重生成模式：基于既有 DevContext JSON 做精准修改，而非从零重写。
     if (vars.changeNote && vars.existingDoc) {
       parts.push("【现有 DevContext（待修改）】\n" + vars.existingDoc);
-      parts.push(
-        "【本次变更点】\n" + vars.changeNote +
-        "\n\n请在【现有 DevContext】的基础上，只针对上述变更点做必要的修改与补充，" +
-        "未涉及变更的 section 与条目保持原样（含原有 id 与 _source 不变），并按原结构输出完整的更新后 JSON。"
-      );
+      const base =
+        "请在【现有 DevContext】的基础上，只针对上述变更点做必要的修改与补充，" +
+        "未涉及变更的条目保持原样（含原有 id 与 _source 不变）。";
+      // M5-D2 定向重算：顶层 key 集合必须收敛到被影响的那几段——
+      // 否则模型会顺手重写别的段，把「其余 N 段逐字节未变」这条验收标准打掉。
+      const scope = vars.sections?.length
+        ? `\n\n⚠️ 本次**只重算**这些 section：${vars.sections.join("、")}。` +
+          "输出 JSON 的**顶层只允许出现这些 key**（meta / references 一律不要写，由系统填充），" +
+          "其余 section 一律不要输出——系统会用原值补齐它们。"
+        : "\n\n请按原结构输出完整的更新后 JSON。";
+      parts.push("【本次变更点】\n" + vars.changeNote + "\n\n" + base + scope);
       return parts.join("\n\n");
     }
 

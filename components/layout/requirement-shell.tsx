@@ -804,8 +804,15 @@ export function RequirementShell({
         changes: Array<{ output: string; field: string; description: string }>;
         summary: string;
         dcRegen?: boolean;
+        devContext?: unknown;
       };
       if (detail.requirementId !== requirementId) return;
+      // M5-D2：后端已把受影响段落标为过期 → 立刻重取 DevContext，
+      // 让「可能已过期」徽标与提示条同屏出现。必须主动 mutate：DC 面板在
+      // 「有内容且非生成中」时轮询已停（refreshInterval=0），不会自己发现标记变化。
+      if (detail.devContext) {
+        globalMutate(`/api/requirements/${requirementId}/dev-context`);
+      }
       // 自动开始变更更新流程（携带各文档变更点，用于精准重生成；dcRegen 表示队列排空后触发 DC）
       processChangeQueue(detail.affectedOutputs, detail.changes ?? [], detail.dcRegen === true);
     };

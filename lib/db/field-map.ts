@@ -406,7 +406,7 @@ export const JSONB_COLS: Readonly<Record<string, readonly string[]>> = {
   api_tokens: [],
   share_tokens: [],
   objects: [],
-  dev_contexts: ["content", "upstream_ids"],
+  dev_contexts: ["content", "upstream_ids", "stale_sections", "stale_reason"], // M5 补 stale_sections/stale_reason（JSONB 血缘标记）
   dev_context_versions: ["content", "changelog"],
   suggestions: ["payload", "source"], // M3
   decisions: [], // M3（无 JSONB 列）
@@ -450,7 +450,9 @@ export const BIGINT_COLS: Readonly<Record<string, readonly string[]>> = {
   api_tokens: [],
   share_tokens: [],
   objects: [],
-  dev_contexts: ["requirement_id"],
+  dev_contexts: [], // 修正（M5-D2 实测）：requirement_id 是 TEXT 主键，此前误登记为 int8
+  // → toRow 把它转 Number 得到 NaN，任何「读 dev_contexts 行再取 requirement_id」的
+  // 调用方都会拿到 NaN（静默，不报错）。由 scripts/smoke-devcontext-stale.ts 暴露。
   dev_context_versions: ["id"],
   visits: ["id"], // 体验访问埋点：id 为 BIGINT 自增主键
   knowledge_entries: [], // M4（access_count 为 INTEGER，非 int8）

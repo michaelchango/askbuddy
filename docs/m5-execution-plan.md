@@ -78,7 +78,7 @@
 
 | # | 任务 | 文件 | 要点 |
 |---|---|---|---|
-| P2-1 | 影响映射表（技术核心，纯函数） | `lib/services/devcontext-impact.ts` 新建 | `ImpactTrigger` 15 项封闭枚举 + `DIRECT_IMPACT`（`prd.markdown` **必须空集**，AD-2）+ `SECTION_CLOSURE`（镜像三层一致性规则）+ `ALWAYS_RECOMPUTE=['meta','references']` + `resolveAffectedSections`（直接命中→decision 特例→闭包不动点→fail-safe 全量→按 schema 顺序输出）。section 键集合从 **`lib/schemas/devcontext.ts` 的 SECTION_KEYS** 导入，禁止硬编码 |
+| P2-1 | 影响映射表（技术核心，纯函数） | `lib/services/devcontext-impact.ts` 新建 | `ImpactTrigger` **14** 项封闭枚举 + `DIRECT_IMPACT`（`prd.markdown` **必须空集**，AD-2）+ `SECTION_CLOSURE`（镜像三层一致性规则）+ `ALWAYS_RECOMPUTE=['meta','references']` + `resolveAffectedSections`（直接命中→decision 特例→闭包不动点→fail-safe 全量→按规范顺序输出）。section 键集合从 **`lib/schemas/devcontext.ts` 的 SECTION_KEYS** 导入，禁止硬编码。⚠️ 原文档写「15 项」是其自身算术笔误：列为 union 的成员与 `DIRECT_IMPACT` 的行数都只有 14（6 卡片 + 3 调研 + 1 方案 + 1 原型 + 1 PRD + 2 决策/知识），已按 14 落地并在契约测试里钉死 |
 | P2-2 | 卡片变更返回字段级 diff | `lib/services/card.ts` 改造 | `applyCardChange` 返回 `{ok, changedFields}`（在 CARD_FIELDS 白名单合并循环 L58 逐字段比对）；唯一调用点 conversation 路由 L232 适配 |
 | P2-3 | change-analyzer 扩展 | `lib/services/change-analyzer.ts` 改造 | `ChangeAnalysis` 加可选 `triggers`；新增纯函数 `outputsToTriggers`（research→3、design→solution.doc+prototype.structure、prd→prd.markdown、card→[]）；**prompt 与候选窗口过滤一字不改** |
 | P2-4 | 定向重算服务 | `lib/services/devcontext.ts`（或新建 `dev-context-regenerate.ts`） | `markDevContextStale`（只标记：`maybe_stale=1` + `stale_sections` + `stale_reason`，不调 LLM）/ `regenerateSections`（上游子集组装→只输出指定 section→逐 section 合并（未列 section 逐字节保留含 `_source`）→meta/references 纯代码重算→三层 Validator→失败升级一次否则降 draft→`current_version+1`+快照+结构化 changelog→clearStale）/ `clearStale` |
@@ -88,6 +88,42 @@
 | P2-8 | MCP 感知 stale | `mcp/server.ts`、`docs/mcp-guide.md` | `requirement_dev_context` 与 4 个 section 工具返回体加 `_meta`（version/status/completeness_score/maybe_stale/stale_sections/warning 自然语言） |
 
 **Phase 2 闸门**：`npm run verify` + 契约测试（P3-1 的 impact-map.spec 6 条全绿）+ 10 组金样本回归表全对 + 手动冒烟「改卡片 constraints 字段 → 只有 business_rules 链路段被标过期」。
+
+> ✅ **Phase 2 已交付（2026-09-28）**——P2-1 ~ P2-8 全部落地，闸门实测结果与校准见下：
+> - **闸门实测**：`npm run verify` 全绿（104 单测：契约 7 条 + 影响解析 22 条），`db:check` 24/24/24；
+>   真库端到端冒烟 `scripts/smoke-devcontext-refresh.ts` **13/13**（真实 AI 调用，v1→v2），
+>   **A1 核心验收通过**：只重算 `card.constraints` 闭包（dependencies/business_rules/edge_cases/
+>   acceptance_criteria/test_cases）+ meta/references，其余 **11 个 section 逐字节不变（含 `_source`）**；
+>   版本快照的 `changelog.changed_sections=7 / unchanged_sections=11` 与实测账目深等一致。
+>   `scripts/smoke-devcontext-stale.ts` 14/14（JSONB 写入路径 + 并集语义 + 定向清除）。
+> - **三处相对原文档的落地校准（需知悉）**：
+>   1. **P2-4 未做「按 section 组装上游子集」**：为控制改动面，定向重算复用了既有 `buildStepContext`
+>      的全量上游，靠 prompt 硬约束「只输出这些 section」+ 代码侧丢弃越权段来保证范围收敛。
+>      语义正确（A1 实测通过），但省 token 的效果未达原设计；后续若单次重算 token 偏高，再补子集组装。
+>   2. **P2-7 未做「变化 section 短暂高亮 2s」**：该面板没有逐段渲染面（section 走下载/MCP 出去），
+>      改为在提示条内显示「本次更新 N 段，其余 M 段未变」——验收标准的可见性反而更强。
+>      过期段的「橙色圆点 + 因何过期 tooltip」落在提示条的段名 chip 上。
+>   3. **P2-5 增加 `mode:'dismiss'`**：原文档要求 UI 有「标记为无需更新」出口，但它需要一条写接口
+>      （`clearStale` 是服务层函数，客户端够不到）。就在同一路由加一个非 SSE 的 dismiss 分支，
+>      避免为单个动作再开路由。
+> - 另：`lib/services/devcontext-cache.ts` 抽出（原为 DC GET 路由的模块私有缓存）——重算路由必须
+>   能失效同一份缓存，否则重算后面板会读到最多 5s 的旧快照（用户看到「点了没反应」）。
+>
+> 🚧 **Phase 2 中途进展记录（2026-09-28，保留以便追溯）**——已完成 P2-1 / P2-2 / P2-3 / P2-6 与 P2-4 的一半：
+> - ✅ **P2-1** `lib/services/devcontext-impact.ts`（+ `tests/contract/impact-map.spec.ts` 7 条 + `tests/unit/devcontext-impact.spec.ts` 18 条含 9 组金样本 + fail-safe/decision 特例/确定性）。
+>   两处对原文档的**实现校准**：① 枚举实为 14 项（见上）；② 原文档未定义「fail-safe 全量重算」的边界取值 —— 现约定 `resolveAffectedSections(sources, { existing })`，`existing` = 该 DevContext 当前**实际存在**的 section（拿不到时保守取 18 全集），配套纯函数 `presentSections(content)`。
+>   另：金样本顺序以「meta 首 / 中间按 schema 声明顺序 / references 尾」为准——原文档「只改约束」那行的示例顺序与它自己规定的「按 schema 顺序输出」自相矛盾，另外两组写全的金样本与该规范一致。
+> - ✅ **P2-2** `applyCardChange` 返回 `{ ok, changedFields }`（导出 `CARD_FIELDS` 供契约测试反射）；唯一调用点已适配。
+> - ✅ **P2-3** `outputsToTriggers` + `ChangeAnalysis.triggers`；补了原文档漏掉的 `prototype → prototype.structure` 一行（路由会把 prototype 单独补进 affectedOutputs，漏掉即是静默的重算缺口）。**prompt 与候选窗口过滤一字未改**。
+> - ✅ **P2-6** conversation 路由 P3-1.5 接入（`card.*` diff + `outputsToTriggers` → `resolveAffectedSections` → `markDevContextStale`）+ `change_update` payload **只增** `devContext` 字段 + 变更级联打回生命周期（`source='change_cascade'`，带审计）。
+>   注意：这里用**路由侧过滤后**的 `affectedOutputs` 重新推导 trigger，不复用 `changes.triggers`（后者可能含被候选窗口过滤掉的输出物 → 会多标 stale）。
+> - 🚧 **P2-4 一半**：`markDevContextStale`（并集累积，不覆盖）/ `clearStale`（支持定向，`maybe_stale` 由剩余清单反推）已落地并经真库冒烟 `scripts/smoke-devcontext-stale.ts` 14/14 验证；`clearStale` 的定向语义是本实现相对原文档的补充（原文档只有 `sections?`，未定义"只清一部分时 maybe_stale 怎么办"）。
+>   **`regenerateSections` 未做**（P2-4 核心，需改 prompt 的 section 子集输出 + 上游子集组装 + 合并/升级/快照/changelog）。
+> - ⏳ 未做：P2-4 `regenerateSections`、P2-5 refresh API、P2-7 UI stale 面板、P2-8 MCP `_meta`。
+>
+> 本次顺带修掉的两个**既有**缺陷（都不是 M5 引入的，均由真库冒烟暴露）：
+> 1. `lib/db/field-map.ts` 的 `JSONB_COLS.dev_contexts` 漏登记 `stale_sections` / `stale_reason`（P1-4 只补了 FIELD_MAP/TIMESTAMP_COLS）→ JSONB 写入会走错分支。
+> 2. `lib/db/field-map.ts` 的 `BIGINT_COLS.dev_contexts` 误登记 `requirement_id`（该列是 **TEXT 主键**）→ `toRow` 把它转 `Number` 得 NaN，**任何「读 dev_contexts 行再取 requirement_id」的调用方都会静默拿到 NaN**。
 
 ### Phase 3 · Provider 抽象（D3，约 1.5 天）
 

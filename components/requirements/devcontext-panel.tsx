@@ -11,6 +11,7 @@ import {
   renderPrompt,
 } from "@/lib/services/devcontext-render";
 import { firstSourceTurn } from "@/lib/services/devcontext-source";
+import { DevContextStaleBar } from "./dev-context-stale-bar";
 import { EVT } from "@/lib/events";
 import type { DevContext } from "@/lib/schemas/devcontext";
 
@@ -24,6 +25,10 @@ interface DevContextApiData {
   updated_at: string;
   hints: string[];
   versions: Array< { version: number; note?: string; createdAt?: string } >;
+  /** M5-D2：变更联动产生的 section 级失效标记。 */
+  maybe_stale?: boolean;
+  stale_sections?: string[];
+  stale_reason?: Record<string, string[]>;
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json()).then((j) => (j.ok ? j.data : null));
@@ -106,6 +111,10 @@ export function DevContextPanel({
   const hasContent = !!data?.content;
   const score = data?.completeness_score ?? 0;
   const isLow = hasContent && score < 0.7;
+  // M5-D2：变更联动标记的过期段。只看 stale_sections 非空即可——
+  // 服务端 buildStaleMeta 已把「列值和清单不一致」的中间态一并算作过期。
+  const staleSections = data?.stale_sections ?? [];
+  const isStale = hasContent && staleSections.length > 0;
   // M3 · 第一个可回溯的对话轮次（验收红线：DevContext 条目一键回溯到产生它的对话）
   const firstTurn = hasContent ? firstSourceTurn(data?.content) : null;
 
@@ -165,15 +174,23 @@ export function DevContextPanel({
               <Loader2 className="h-3 w-3 animate-spin" /> 生成中…
             </span>
           ) : hasContent ? (
-            <span
-              className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                score >= 0.7
-                  ? "bg-emerald-50 text-emerald-600"
-                  : "bg-amber-50 text-amber-600"
-              }`}
-            >
-              已完成 · {Math.round(score * 100)}%
-            </span>
+            <>
+              <span
+                className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  score >= 0.7
+                    ? "bg-emerald-50 text-emerald-600"
+                    : "bg-amber-50 text-amber-600"
+                }`}
+              >
+                已完成 · {Math.round(score * 100)}%
+              </span>
+              {/* M5-D2：过期徽标置首，因为它比分数更需要被立刻看到 */}
+              {isStale && (
+                <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                  ● 可能已过期（{staleSections.length} 处）
+                </span>
+              )}
+            </>
           ) : (
             <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-400">
               未生成
@@ -221,6 +238,16 @@ export function DevContextPanel({
             </div>
           ) : (
             <>
+              {isStale && (
+                <DevContextStaleBar
+                  requirementId={requirementId}
+                  sections={staleSections}
+                  reason={data?.stale_reason ?? {}}
+                  onDone={async () => {
+                    await mutate();
+                  }}
+                />
+              )}
               {isLow && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-700">
                   ⚠️ 可实现性评分偏低（{Math.round(score * 100)}%），部分内容 section 缺失或未通过一致性校验，

@@ -557,6 +557,7 @@ export function ConversationPanel({
                   affectedOutputs: string[];
                   changes: Array<{ output: string; field: string; description: string }>;
                   summary: string;
+                  devContext?: unknown;
                 };
                 // 通知 shell 执行变更更新
                 window.dispatchEvent(
@@ -566,6 +567,8 @@ export function ConversationPanel({
                       affectedOutputs: payload.affectedOutputs,
                       changes: payload.changes,
                       summary: payload.summary,
+                      // M5-D2：透传 DevContext 失效标记（只增字段，旧监听方忽略即可）
+                      devContext: payload.devContext ?? null,
                     },
                   })
                 );

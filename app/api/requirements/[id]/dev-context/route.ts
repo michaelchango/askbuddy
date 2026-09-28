@@ -3,6 +3,12 @@ import { getSession } from "@/lib/auth/session";
 import { getRequirement } from "@/lib/services/requirements";
 import { getProject } from "@/lib/services/projects";
 import { getDevContext, listDevContextVersions } from "@/lib/services/devcontext";
+import { buildStaleMeta } from "@/lib/services/devcontext-impact";
+import {
+  getCachedDc,
+  invalidateDcCache,
+  setCachedDc,
+} from "@/lib/services/devcontext-cache";
 import { buildHints, type CompletenessReport } from "@/lib/services/devcontext-validate";
 import { runDevContextGeneration, type DevContextTrigger } from "@/lib/ai/steps/devcontext";
 import type { SectionKey } from "@/lib/schemas/devcontext";
@@ -10,38 +16,8 @@ import type { SectionKey } from "@/lib/schemas/devcontext";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// ---------------------------------------------------------------------------
-// 服务端内存缓存：DevContext 数据仅在 POST（重新生成）时变化，
-// GET 读取完全可以短时缓存以减少对 CloudBase PG 连接池的压打。
-//
-// 同一 requirementId 在 TTL 内的重复 GET 直接返回缓存 JSON，
-// 不消耗任何 DB 连接。POST 成功后主动失效对应 key。
-// ---------------------------------------------------------------------------
-const DC_CACHE_TTL_MS = 5000; // 5 秒——面板轮询基础间隔也是 5s，刚好 1:1 去重
-
-interface DcCacheEntry {
-  json: string;
-  ts: number;
-}
-const dcCache = new Map<string, DcCacheEntry>();
-
-function getCached(id: string): NextResponse<unknown> | null {
-  const entry = dcCache.get(id);
-  if (!entry) return null;
-  if (Date.now() - entry.ts > DC_CACHE_TTL_MS) { dcCache.delete(id); return null; }
-  return new NextResponse(entry.json, {
-    status: 200,
-    headers: { "Content-Type": "application/json", "X-Cache": "hit" },
-  });
-}
-
-function setCached(id: string, data: unknown): void {
-  dcCache.set(id, { json: JSON.stringify(data), ts: Date.now() });
-}
-
-function invalidateCache(id: string): void {
-  dcCache.delete(id);
-}
+// 服务端内存缓存已抽到 lib/services/devcontext-cache.ts（M5-D2）：
+// 定向重算路由也要能失效同一份缓存，否则重算后面板会读到最多 5s 的旧快照。
 
 // 鉴权 + 归属校验（与 requirements/[id]/route.ts 同例）。
 async function authorize(id: string) {
@@ -66,7 +42,7 @@ export async function GET(
   if (auth.error) return auth.error;
 
   // 缓存命中 → 零 DB 连接直接返回
-  const hit = getCached(params.id);
+  const hit = getCachedDc(params.id);
   if (hit) return hit;
 
   const rec = await getDevContext(params.id);
@@ -90,6 +66,9 @@ export async function GET(
 
   const versions = await listDevContextVersions(params.id).catch(() => []);
 
+  // M5-D2：把「哪些段已过期、因何过期」一并下发，供面板渲染过期提示条。
+  const staleMeta = buildStaleMeta(rec);
+
   const body = {
     ok: true,
     data: {
@@ -102,11 +81,14 @@ export async function GET(
       updated_at: rec.updated_at,
       hints,
       versions,
+      maybe_stale: staleMeta.maybe_stale,
+      stale_sections: staleMeta.stale_sections,
+      stale_reason: (rec.stale_reason ?? {}) as Record<string, string[]>,
     },
   };
 
   // 写入缓存（下次 GET 直接复用）
-  setCached(params.id, body);
+  setCachedDc(params.id, body);
 
   return NextResponse.json(body);
 }
@@ -130,7 +112,7 @@ export async function POST(
       // 超时由函数内部默认值（180s）或 DEVCONTEXT_TIMEOUT_MS 环境变量控制
     });
     // 重新生成成功 → 立即失效缓存，下次 GET 拉最新数据
-    invalidateCache(params.id);
+    invalidateDcCache(params.id);
     return NextResponse.json({ ok: true, data: { version } });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

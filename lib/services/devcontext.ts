@@ -8,6 +8,7 @@
 import { db } from "@/lib/db";
 import {
   DevContextSchema,
+  SECTION_LABELS,
   type DevContext,
   type DevContextBody,
   type SectionKey,
@@ -16,6 +17,11 @@ import { getRequirement } from "@/lib/services/requirements";
 import { getConversationTurn } from "@/lib/services/conversations";
 import type { OutputVersion } from "@/lib/services/outputs";
 import type { CompletenessReport, ConsistencyIssue } from "@/lib/services/devcontext-validate";
+import type {
+  DevContextSection,
+  ImpactResult,
+  ImpactTrigger,
+} from "@/lib/services/devcontext-impact";
 
 /** dev_contexts 主表行（代码键口径，snake_case，与 field-map.ts 一致）。 */
 export interface DevContextRecord {
@@ -28,6 +34,10 @@ export interface DevContextRecord {
   present_count: number;
   upstream_ids: unknown[];
   maybe_stale: number;
+  /** M5-D2：待重算的 section 清单（累积并集）。空数组 = 无过期段。 */
+  stale_sections?: DevContextSection[];
+  /** M5-D2：{ section: [trigger, ...] }，UI 据此显示「因何过期」。 */
+  stale_reason?: Partial<Record<DevContextSection, ImpactTrigger[]>>;
   generated_by?: string | null;
   updated_at: string;
 }
@@ -39,6 +49,18 @@ export interface SaveMetaInput {
   status: "draft" | "confirmed";
   trigger: "prd_writing" | "manual" | "change_analysis";
   note?: string;
+  /**
+   * M5-D2：是否顺带清空失效标记。默认 true（全量生成 = 内容是全新的，没有过期段）。
+   * 定向重算必须传 false —— 只重算了部分段，其余段仍然过期，此时清空等于谎报；
+   * 调用方随后用 `clearStale(rid, 已重算段)` 精确收尾。
+   */
+  clearStale?: boolean;
+  /**
+   * M5-D2：写进 `dev_context_versions.changelog` 的结构化记录
+   * （`{trigger, changed_sections, unchanged_sections, escalated, note}`）。
+   * 缺省写入 meta.changelog（版本号/时间/触发来源）。
+   */
+  changelogDetail?: unknown;
 }
 
 /** 读取开发上下文：不传 version 读主表；传了从 dev_context_versions 用复合 id 精确取。 */
@@ -180,7 +202,7 @@ export async function saveDevContext(
       content: full,
       completeness_score: full.meta.completeness_score,
       status: full.meta.status,
-      changelog: full.meta.changelog,
+      changelog: meta.changelogDetail ?? full.meta.changelog,
       note: meta.note ?? "",
       created_at: now,
     });
@@ -188,7 +210,7 @@ export async function saveDevContext(
     console.error("[saveDevContext] 版本历史写入失败:", verErr);
   }
 
-  const row = {
+  const row: Record<string, unknown> = {
     requirement_id: requirementId,
     content: full,
     completeness_score: full.meta.completeness_score,
@@ -197,16 +219,106 @@ export async function saveDevContext(
     applicable_count: full.meta.applicable_sections.length,
     present_count: full.meta.present_sections.length,
     upstream_ids: [],
-    maybe_stale: 0,
     generated_by: full.meta.generated_by,
     updated_at: now,
   };
+  // M5-D2：全量生成才清失效标记（且三列一起清，否则会出现
+  //「maybe_stale=0 但 stale_sections 非空」的自相矛盾状态）；
+  // 定向重算由调用方 clearStale(rid, 已重算段) 精确收尾——这里三个键都不写 = 库中原值不动。
+  if (meta.clearStale !== false) {
+    row.maybe_stale = 0;
+    row.stale_sections = [];
+    row.stale_reason = {};
+  }
   if (existing) {
     await db.update("dev_contexts", requirementId, row, "requirement_id");
   } else {
     await db.insert("dev_contexts", row);
   }
   return nextVersion;
+}
+
+// `buildStaleMeta`（MCP/UI 的过期元信息）已移到 lib/services/devcontext-impact.ts——
+// 它是零依赖纯函数，放在那个模块才能不 mock db 直接单测。
+
+// ─────────────── M5-D2：section 级失效标记（确定性映射的「血缘」） ───────────────
+
+/**
+ * 打 stale 标记：**只标记，不重算**——遵循「用户决定是否重生成」的原则。
+ * 不调 LLM、不改 content、不改 version，只写三个列。
+ *
+ * 幂等：重复标记同一批 section 会**求并集**（多次变更累积成一份更大的待重算清单），
+ * 而不是覆盖——否则「先改卡片约束、再改目标用户」会把前一批标记丢掉。
+ */
+export async function markDevContextStale(
+  requirementId: string,
+  impact: ImpactResult
+): Promise<void> {
+  if (impact.sections.length === 0) return;
+  const row = await db.get<DevContextRecord>("dev_contexts", requirementId, "requirement_id");
+  if (!row) return; // 还没有 DevContext，就无所谓过期
+
+  const prevSections = Array.isArray(row.stale_sections) ? row.stale_sections : [];
+  const prevReason = (row.stale_reason ?? {}) as Record<string, ImpactTrigger[]>;
+
+  const sections = [...new Set([...prevSections, ...impact.sections])];
+  const reason: Record<string, ImpactTrigger[]> = { ...prevReason };
+  for (const [sec, triggers] of Object.entries(impact.reason)) {
+    reason[sec] = [...new Set([...(reason[sec] ?? []), ...(triggers ?? [])])];
+  }
+
+  await db.update(
+    "dev_contexts",
+    requirementId,
+    {
+      maybe_stale: 1,
+      stale_sections: sections,
+      stale_reason: reason,
+      updated_at: new Date().toISOString(),
+    },
+    "requirement_id"
+  );
+}
+
+/**
+ * 清标记。不传 sections = 全清（重算走全量时用）；传了 = 只清这几段
+ * （定向重算成功后清已算过的，或用户点「标记为无需更新」）。
+ *
+ * `maybe_stale` 由剩余清单反推，而不是无条件置 0——定向重算只清一部分时，
+ * 剩余段仍然过期，此时置 0 会让 UI 与 MCP 的 warning 一起消失。
+ */
+export async function clearStale(
+  requirementId: string,
+  sections?: DevContextSection[]
+): Promise<void> {
+  const row = await db.get<DevContextRecord>("dev_contexts", requirementId, "requirement_id");
+  if (!row) return;
+
+  const prevSections = Array.isArray(row.stale_sections) ? row.stale_sections : [];
+  const prevReason = (row.stale_reason ?? {}) as Record<string, ImpactTrigger[]>;
+
+  let nextSections = prevSections;
+  let nextReason = prevReason;
+  if (sections?.length) {
+    nextSections = prevSections.filter((s) => !sections.includes(s));
+    nextReason = { ...prevReason };
+    for (const s of sections) delete nextReason[s];
+  } else {
+    nextSections = [];
+    nextReason = {};
+  }
+
+  await db.update(
+    "dev_contexts",
+    requirementId,
+    {
+      maybe_stale: nextSections.length > 0 ? 1 : 0,
+      stale_sections: nextSections,
+      stale_reason: nextReason,
+      updated_at: new Date().toISOString(),
+    },
+    "requirement_id"
+  );
 }
 
 /** 删除需求的开发上下文（挂到 requirements.deleteRequirement）。 */

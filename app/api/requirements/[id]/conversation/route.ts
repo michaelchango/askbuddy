@@ -11,9 +11,17 @@ import {
   setAwaitingConfirm,
   nextStepOf,
 } from "@/lib/services/steps";
-import { analyzeChanges } from "@/lib/services/change-analyzer";
+import { analyzeChanges, outputsToTriggers } from "@/lib/services/change-analyzer";
 import { abortDcGen } from "@/lib/ai/steps/devcontext";
-import { getDevContext } from "@/lib/services/devcontext";
+import { getDevContext, markDevContextStale } from "@/lib/services/devcontext";
+import {
+  cardFieldTrigger,
+  presentSections,
+  resolveAffectedSections,
+  type ImpactResult,
+  type ImpactSource,
+} from "@/lib/services/devcontext-impact";
+import { getLifecycle, transitionLifecycle } from "@/lib/services/requirement-status";
 import { db } from "@/lib/db";
 import { isTransientSqlError } from "@/lib/db/cloudbase";
 import type { RequirementStep, StepName, RequirementCard } from "@/types";
@@ -221,6 +229,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
             // P3-1 卡片受影响：同步聚焦合并（不进重生成队列），
             // 保证后续下游重生成读到的是更新后的新卡片。
+            // M5-D2：合并返回字段级 diff —— 变更影响源里质量最高的一类
+            //（卡片是 JSON，diff 是确定性字符串比较，不掺 LLM 判断）。
+            let cardChangedFields: string[] = [];
             if (affectedOutputs.includes("card")) {
               const cardChangeText = [
                 `用户变更请求：${message}`,
@@ -229,7 +240,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
                   .map((c) => `- ${c.field}: ${c.description}`),
               ].join("\n");
               // 第三参为版本 note：变更定版时写入 card_versions.note 形成变更记录
-              await applyCardChange(requirementId, cardChangeText, changes.summary).catch(() => {});
+              const cardResult = await applyCardChange(
+                requirementId,
+                cardChangeText,
+                changes.summary
+              ).catch(() => ({ ok: false, changedFields: [] as string[] }));
+              cardChangedFields = cardResult.changedFields;
               // 通知前端刷新卡片
               const reqNow = await getRequirement(requirementId).catch(() => null);
               if (reqNow?.card) {
@@ -239,12 +255,42 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
               }
             }
 
+            // P3-1.5 DevContext 定向失效标记（确定性映射 + 传递闭包，不调 LLM）
+            // ⚠️ 用路由侧的 affectedOutputs 重新推导 trigger，**不**复用 changes.triggers：
+            //    后者基于 analyzeChanges 内部的清单，可能含被候选窗口过滤掉的输出物，
+            //    直接复用会标出多余的 stale 段。
+            const triggers: ImpactSource[] = [
+              ...cardChangedFields.map((f) => cardFieldTrigger(f)),
+              ...outputsToTriggers(affectedOutputs),
+            ];
+            let devContextImpact: ImpactResult | null = null;
+            if (triggers.length > 0) {
+              const dc = await getDevContext(requirementId).catch(() => null);
+              devContextImpact = resolveAffectedSections(triggers, {
+                existing: dc ? presentSections(dc.content as Record<string, unknown>) : undefined,
+              });
+              await markDevContextStale(requirementId, devContextImpact).catch(() => {});
+            }
+
             // P3-2 受影响的文档步骤置为【待更新】，由前端按依赖顺序串行重生成
             const affectedSteps = affectedOutputs
               .map((o) => outputToStep(o))
               .filter((s): s is StepName => s !== null && s !== "dialoguing");
             for (const s of affectedSteps) {
               await markStepPendingUpdate(requirementId, s);
+            }
+
+            // P3-2.5 变更级联到生命周期：已交付 / 待复核的需求被提出修改 → 显式打回 designing。
+            // 必须走 transitionLifecycle（source='change_cascade'）而非静默改列：
+            // 「被打回」这件事必须在审计表里可见，否则生命周期就不值得信。
+            const lcNow = await getLifecycle(requirementId).catch(() => null);
+            if (lcNow === "completed" || lcNow === "review") {
+              await transitionLifecycle(requirementId, "designing", {
+                actor: user.uid,
+                reason: changes.summary,
+                source: "change_cascade",
+                from: lcNow,
+              }).catch(() => {});
             }
 
             const steps = await getSteps(requirementId);
@@ -268,11 +314,21 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
             controller.enqueue(
               encoder.encode(
+                // M5-D2：只**增**字段不改结构（前端 conversation-panel 与 requirement-shell
+                // 都监听本事件，破坏性变更会同时打断两处）。
                 `event: change_update\ndata: ${JSON.stringify({
                   affectedOutputs,
                   changes: changes.changes,
                   summary: changes.summary,
                   dcRegen: dcShouldRegen,
+                  devContext: devContextImpact
+                    ? {
+                        staleSections: devContextImpact.sections,
+                        direct: devContextImpact.direct,
+                        reason: devContextImpact.reason,
+                        fullRecompute: devContextImpact.fullRecompute,
+                      }
+                    : null,
                 })}\n\n`
               )
             );
