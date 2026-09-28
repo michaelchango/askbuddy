@@ -1,0 +1,247 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for lib/events.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../prettify.css" />
+    <link rel="stylesheet" href="../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../index.html">All files</a> / <a href="index.html">lib</a> events.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>0/15</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>1/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>1/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>0/15</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
+ * 跨组件 DOM 自定义事件名集中定义。
+ *
+ * 这些事件通过 window.dispatchEvent / addEventListener 在
+ * requirement-shell、conversation-panel、prototype-panel 之间传递。
+ * 由于 dispatch 与 listen 分散在不同文件，用字面量极易出现单侧改动
+ * 导致的「静默失效」，故统一在此常量化，禁止再写裸字符串。
+ */
+<span class="cstat-no" title="statement not covered" >export const EVT = {</span>
+  /** 向对话面板回灌一条生成中/生成完成的消息 */
+<span class="cstat-no" title="statement not covered" >  GEN_MESSAGE: "askbuddy:gen-message",</span>
+  /** 变更分析完成回执 */
+<span class="cstat-no" title="statement not covered" >  CHANGE_COMPLETE: "askbuddy:change-complete",</span>
+  /** 变更分析过程中的增量更新 */
+<span class="cstat-no" title="statement not covered" >  CHANGE_UPDATE: "askbuddy:change-update",</span>
+  /** 请求进入修改态（原型/产出物） */
+<span class="cstat-no" title="statement not covered" >  REQUEST_MODIFY: "askbuddy:request-modify",</span>
+  /** 「继续下一步」提示卡 */
+<span class="cstat-no" title="statement not covered" >  PROCEED_PROMPT: "askbuddy:proceed-prompt",</span>
+  /** 自动推进生成失败，通知对话面板显示可恢复错误 */
+<span class="cstat-no" title="statement not covered" >  GEN_ERROR: "askbuddy:gen-error",</span>
+  /** 定位来源：从产物条目跳回产生它的那轮对话并高亮 */
+<span class="cstat-no" title="statement not covered" >  LOCATE_SOURCE: "askbuddy:locate-source",</span>
+  /** 按钮手动进入下一阶段：shell 派发推进提示，panel 无 rid 守卫必收 */
+<span class="cstat-no" title="statement not covered" >  PROCEED_TIP: "askbuddy:proceed-tip",</span>
+  /** 文档/重生成流开始：通知对话面板进入 doc-generating 阶段（发送禁用、可终止） */
+<span class="cstat-no" title="statement not covered" >  DOC_GEN_START: "askbuddy:doc-gen-start",</span>
+  /** 文档/重生成流结束：通知对话面板退出 doc-generating 阶段，恢复 idle */
+<span class="cstat-no" title="statement not covered" >  DOC_GEN_END: "askbuddy:doc-gen-end",</span>
+  /** 用户主动停止当前流（对话/文档/变更队列/DC）：shell 与 panel 统一监听执行 abort */
+<span class="cstat-no" title="statement not covered" >  STOP_FLOW: "askbuddy:stop-flow",</span>
+<span class="cstat-no" title="statement not covered" >} as const;</span>
+&nbsp;
+export type EvtName = (typeof EVT)[keyof typeof EVT];
+&nbsp;
+/**
+ * 最近派发的 GEN_MESSAGE 内容兜底缓存。
+ *
+ * 背景：requirement-shell 与 conversation-panel 通过 window CustomEvent 通信，
+ * 若事件派发时 panel 尚未 ready（rid 为 null 或正在 mount），消息会丢失。
+ * 此处缓存最近按 requirementId 派发的消息文本；panel 在 rid 就绪后主动 flush，
+ * 避免变更流程中「XX 已更新」的提示偶发消失。
+ */
+<span class="cstat-no" title="statement not covered" >export const pendingGenMessages = new Map&lt;string, string[]&gt;();</span>
+&nbsp;
+/**
+ * 最近派发的 CHANGE_COMPLETE 内容兜底缓存。
+ *
+ * 同 pendingGenMessages：若 dispatch 时 panel 还未 mount / rid 仍为 null，
+ * 事件会被监听器的 `if (!rid) return` 直接丢弃，导致变更完成总结
+ * 「✅ 变更已处理完成」在部分时序下消失。这里缓存受影响输出物列表，
+ * panel rid 就绪时 flush 后再调用 /conversation/summary 落库并展示。
+ */
+<span class="cstat-no" title="statement not covered" >export const pendingChangeComplete = new Map&lt;string, string[]&gt;();</span>
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-09-28T09:23:26.053Z
+            </div>
+        <script src="../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../sorter.js"></script>
+        <script src="../block-navigation.js"></script>
+    </body>
+</html>
+    

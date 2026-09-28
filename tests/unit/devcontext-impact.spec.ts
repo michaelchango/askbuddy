@@ -12,10 +12,50 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   ALL_SECTIONS,
+  ALL_TRIGGERS,
   buildStaleMeta,
+  cardFieldTrigger,
+  presentSections,
   resolveAffectedSections,
   type ImpactTrigger,
 } from "@/lib/services/devcontext-impact";
+
+// ───────────────────────── 卡片字段 → trigger / 现存段落 ─────────────────────────
+
+test("cardFieldTrigger：<field> → card.<field>（路由用它把 changedFields 换成 trigger）", () => {
+  assert.equal(cardFieldTrigger("constraints"), "card.constraints");
+  assert.equal(cardFieldTrigger("targetUsers"), "card.targetUsers");
+  // 必须是封闭集合内的成员，否则契约测试的「全覆盖」失去意义
+  assert.ok((ALL_TRIGGERS as readonly string[]).includes(cardFieldTrigger("scope")));
+});
+
+test("presentSections：只认「真的存在」的段，且按规范顺序输出", () => {
+  const content = {
+    $schema: "x",
+    meta: { version: 1 },
+    // 故意乱序 + 含协议字段
+    acceptance_criteria: [{ id: "AC-001" }],
+    objective: { goal: "g" },
+    references: { prd_version: 1 },
+    data_structures: null, // null 视为「不存在」
+    glossary: undefined, // undefined 视为「不存在」
+    business_rules: [], // 空数组仍是「存在」（缺段才不输出，空段不出现）
+  };
+  assert.deepEqual(presentSections(content), [
+    "meta",
+    "objective",
+    "business_rules",
+    "acceptance_criteria",
+    "references",
+  ]);
+});
+
+test("presentSections：脏输入（空 / null / 非对象）→ 空数组，不抛错", () => {
+  assert.deepEqual(presentSections(null), []);
+  assert.deepEqual(presentSections(undefined), []);
+  assert.deepEqual(presentSections({}), []);
+  assert.deepEqual(presentSections([] as unknown as Record<string, unknown>), []);
+});
 
 // ─────────────────────────── MCP / UI 过期元信息 ───────────────────────────
 

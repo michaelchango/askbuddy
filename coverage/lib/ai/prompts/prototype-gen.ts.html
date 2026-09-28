@@ -1,0 +1,199 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for lib/ai/prompts/prototype-gen.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../../prettify.css" />
+    <link rel="stylesheet" href="../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../../index.html">All files</a> / <a href="index.html">lib/ai/prompts</a> prototype-gen.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">24% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>6/25</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/0</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>0/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">24% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>6/25</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import type { PromptModule } from "./types";
+import { renderKnowledgeBlock } from "./knowledge-render";
+&nbsp;
+// 原型生成：输出单个自包含、可交互的高保真 HTML 原型（多页面 + 页面间跳转）。
+export const prototypeGenPrompt: PromptModule = {
+  taskType: "prototype_gen",
+  system: `你是资深交互设计师与前端工程师。根据用户需求、调研结论与产品方案，生成一个**可交互的高保真 HTML 原型**。
+&nbsp;
+硬性要求：
+1. 输出**单个自包含 HTML 文档**：根标签为 &lt;html&gt;，包含完整 &lt;head&gt; 与 &lt;body&gt;。
+2. 样式使用 Tailwind CSS CDN：&lt;script src="https://cdn.tailwindcss.com"&gt;&lt;/script&gt;。允许用内联 &lt;style&gt; 补充动画/特殊样式。禁止引用其它外部资源（图片可用占位 SVG / emoji / data URI）。
+3. **交互可用**：用原生 JavaScript 实现按钮点击、表单输入、页面切换、弹窗、Tab 等真实交互；不要用死图或假按钮。
+4. **多页面**：若产品存在多个核心页面（如首页 / 列表 / 详情 / 设置），在同一 HTML 内用容器切换的方式实现页面间跳转（顶部或侧边导航 + JS 切换显示），并标注每个页面名称。
+5. 中文文案；结构清晰、视觉美观、贴近真实产品；移动端优先（适配窄屏）。
+6. 可在 &lt;body&gt; 末尾附一个隐藏的结构描述，供系统解析（可选但推荐）：
+   &lt;script type="application/json" id="askbuddy-structure"&gt;{ "pages": [{"id":"home","title":"首页"},{"id":"detail","title":"详情页"}] }&lt;/script&gt;
+7. **只输出 HTML 本身**，不要包裹在 \`\`\`html 代码围栏中，不要输出任何解释性文字。`,
+  buildUser: <span class="fstat-no" title="function not covered" >(vars) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    const lines: string[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    if (vars.card &amp;&amp; Object.keys(vars.card).length) {</span>
+<span class="cstat-no" title="statement not covered" >      lines.push(`【需求卡片】\n${JSON.stringify(vars.card, null, 2)}`);</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" >    if (vars.upstream &amp;&amp; Object.keys(vars.upstream).length) {</span>
+<span class="cstat-no" title="statement not covered" >      lines.push("【上游参考信息】");</span>
+<span class="cstat-no" title="statement not covered" >      for (const [k, v] of Object.entries(vars.upstream)) {</span>
+<span class="cstat-no" title="statement not covered" >        lines.push(`### ${k}\n${v}`);</span>
+<span class="cstat-no" title="statement not covered" >      }</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" >    const knowledge = renderKnowledgeBlock(vars.knowledge);</span>
+<span class="cstat-no" title="statement not covered" >    if (knowledge) lines.push(knowledge);</span>
+<span class="cstat-no" title="statement not covered" >    const instruction =</span>
+<span class="cstat-no" title="statement not covered" >      vars.message &amp;&amp; String(vars.message).trim().length</span>
+<span class="cstat-no" title="statement not covered" >        ? `额外要求：${vars.message}`</span>
+<span class="cstat-no" title="statement not covered" >        : "请据此生成完整的可交互原型（覆盖核心页面与关键交互）。";</span>
+<span class="cstat-no" title="statement not covered" >    lines.push(`【任务】\n${instruction}`);</span>
+<span class="cstat-no" title="statement not covered" >    return lines.join("\n\n");</span>
+<span class="cstat-no" title="statement not covered" >  },</span>
+};
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-09-28T09:23:26.053Z
+            </div>
+        <script src="../../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../../sorter.js"></script>
+        <script src="../../../block-navigation.js"></script>
+    </body>
+</html>
+    

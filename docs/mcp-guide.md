@@ -171,6 +171,32 @@ MCP Server 当前提供 **13 个工具（v2.0.0）**。除 `list_projects` / `li
 > `requirement_dev_context` 与 4 个 `dev_context_*` 工具共享同一路由，按 `section` 参数返回整份或单段；
 > 分段工具可显著降低单次负载，便于 AI 编码工具按需取用。
 
+### `_meta.maybe_stale`：上游已变更但尚未重算（M5-D2）
+
+`requirement_dev_context` 与 4 个 `dev_context_*` 的返回体统一附带 `_meta`：
+
+```jsonc
+{
+  "content": { /* … */ },
+  "_meta": {
+    "version": 7,
+    "status": "confirmed",
+    "completeness_score": 0.82,
+    "maybe_stale": true,
+    "stale_sections": ["business_rules", "acceptance_criteria"],
+    "warning": "⚠️ 以下段落的上游产物已变更但尚未重算，据此编码前请先与产品确认：business_rules（业务规则）、acceptance_criteria（验收标准）。可用 POST /api/requirements/{id}/dev-context/refresh 触发定向重算。"
+  }
+}
+```
+
+**`maybe_stale: true` 意味着这份规格里至少有一段已经过期**（内容还是旧的，只是被打了标记）。
+Agent 的正确反应是：先就 `stale_sections` 列出的段落与产品确认，或触发一次定向重算，
+**不要**据此直接落代码。
+
+设计取舍：这里用**自然语言 `warning`** 而不是只给一个布尔值——消费方是 AI Coding Agent，
+它对散文警告的遵从度显著高于对一个 `true` 的解读；warning 里还带了可执行的下一步
+（refresh 端点），否则 Agent 只能干瞪眼。
+
 ---
 
 ## 7. 典型用法示例

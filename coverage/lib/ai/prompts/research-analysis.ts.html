@@ -1,0 +1,292 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for lib/ai/prompts/research-analysis.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../../prettify.css" />
+    <link rel="stylesheet" href="../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../../index.html">All files</a> / <a href="index.html">lib/ai/prompts</a> research-analysis.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">16.66% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>6/36</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/0</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>0/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">16.66% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>6/36</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">// 调研分析 prompt：合并调研+分析，边看边想边记，产出洞察摘要 + 用户故事 + 功能清单。
+import type { PromptModule } from "./types";
+import { renderKnowledgeBlock } from "./knowledge-render";
+&nbsp;
+export const researchAnalysisPrompt: PromptModule = {
+  taskType: "research_analysis",
+  system: `你是 AskBuddy 的产品经理 AI 助手，现在处于「调研分析」阶段，需要将需求卡片中的背景和目标拆解为可执行的调研结论与分析输出。
+&nbsp;
+工作规则：
+1. 先输出一段 Markdown 格式的「调研分析报告」（report），总长度控制在 600-1200 字，包含以下三个小节（每节 200-400 字）：
+   - ## 市场/用户洞察：基于需求背景，分析目标用户的核心画像和痛点
+   - ## 竞品/行业参考：提炼关键借鉴点（如无参考资料，合理推断常见模式）
+   - ## 核心结论：3-5 条最关键的发现和建议（用列表形式）
+2. 报告后另起一行，以 \`\`\`json 代码块输出结构化分析结果（仅这一段，不要重复 markdown 报告内容）：
+   - userStories：3-8 条用户故事 [{role, goal, reason}]
+   - features：5-15 条功能清单 [{name, desc, priority, module}]，priority 取值 P0/P1/P2
+&nbsp;
+重要约束：
+3. 严格遵守长度限制：总输出 ≤2000 字，避免重复内容、避免空洞套话
+4. markdown 报告的三个小节内容必须互补，不要在三个小节里重复同一段话
+5. json 代码块里的 userStories 和 features 要精炼，不要把 markdown 报告的内容再复制到 json 里
+6. 不要输出"正在分析…""让我来…"等过程性语句，直接给结论
+7. 不要把同一段内容用不同措辞重复多次
+8. 结构化数据必须放在报告【最后】，并用 json 代码块围栏包裹（形如 \`\`\`json ... \`\`\`），绝对不要输出不带围栏的裸 JSON，否则会被误当成报告正文
+9. 输出结束后立即停止，不要追加任何总结性段落`,
+&nbsp;
+<span class="fstat-no" title="function not covered" >  buildUser(vars) {</span>
+<span class="cstat-no" title="statement not covered" >    const parts: string[] = [];</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    if (vars.card &amp;&amp; Object.keys(vars.card).length) {</span>
+<span class="cstat-no" title="statement not covered" >      parts.push("【需求卡片】\n" + JSON.stringify(vars.card, null, 2));</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    if (vars.upstream &amp;&amp; Object.keys(vars.upstream).length) {</span>
+<span class="cstat-no" title="statement not covered" >      const upstreamText = Object.entries(vars.upstream)</span>
+<span class="cstat-no" title="statement not covered" >        .map(([k, v]) =&gt; `### ${k}\n${(v ?? "").slice(0, 4000)}`)</span>
+<span class="cstat-no" title="statement not covered" >        .join("\n\n");</span>
+<span class="cstat-no" title="statement not covered" >      parts.push("【上游参考】\n" + upstreamText);</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    if (vars.history &amp;&amp; vars.history.length) {</span>
+<span class="cstat-no" title="statement not covered" >      const hist = vars.history</span>
+<span class="cstat-no" title="statement not covered" >        .slice(-20) // 最多 20 轮</span>
+<span class="cstat-no" title="statement not covered" >        .map((h) =&gt; `${h.role === "user" ? "用户" : "助手"}：${h.content.slice(0, 500)}`)</span>
+<span class="cstat-no" title="statement not covered" >        .join("\n");</span>
+<span class="cstat-no" title="statement not covered" >      parts.push("【对话历史（最近 20 轮，截断）】\n" + hist);</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    const knowledge = renderKnowledgeBlock(vars.knowledge);</span>
+<span class="cstat-no" title="statement not covered" >    if (knowledge) parts.push(knowledge);</span>
+&nbsp;
+    // 变更模式：基于现有报告做精准修改，而非从零重写
+<span class="cstat-no" title="statement not covered" >    if (vars.changeNote &amp;&amp; vars.existingDoc) {</span>
+<span class="cstat-no" title="statement not covered" >      parts.push("【现有调研分析（待修改）】\n" + vars.existingDoc);</span>
+<span class="cstat-no" title="statement not covered" >      parts.push(</span>
+<span class="cstat-no" title="statement not covered" >        "【本次变更点】\n" + vars.changeNote +</span>
+<span class="cstat-no" title="statement not covered" >        "\n\n请在【现有调研分析】的基础上，只针对上述变更点做必要的修改与补充，" +</span>
+        "未涉及变更的部分保持原有结论与措辞不变。" +
+        "\n\n输出格式必须与首次生成【完全一致】：先输出 Markdown 报告正文（仅含「市场/用户洞察」「竞品/行业参考」「核心结论」三个小节），" +
+        "【最后】以 ```json 代码块输出结构化数据 { userStories, features }；" +
+        "绝对不要把用户故事/功能清单以裸 JSON 或正文小节的形式内联到报告里，它们必须只出现在末尾的 ```json 代码块中。"
+<span class="cstat-no" title="statement not covered" >      );</span>
+<span class="cstat-no" title="statement not covered" >      return parts.join("\n\n");</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    parts.push(`用户指令：${vars.message || "请生成调研分析报告"}`);</span>
+<span class="cstat-no" title="statement not covered" >    return parts.join("\n\n");</span>
+<span class="cstat-no" title="statement not covered" >  },</span>
+};
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-09-28T09:23:26.053Z
+            </div>
+        <script src="../../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../../sorter.js"></script>
+        <script src="../../../block-navigation.js"></script>
+    </body>
+</html>
+    

@@ -20,6 +20,18 @@ export default defineConfig({
       provider: "v8",
       include: ["lib/**"],
       exclude: ["lib/db/**", "lib/cloudbase/**", "**/*.test.ts", "**/*.spec.ts"],
+      /**
+       * 只对**纯函数**模块立卡口（M5-D4）。
+       *
+       * 全局 60% 阈值**刻意不启用**：当前全局 lines ≈ 36%，未覆盖的大头是
+       * lib/ai/steps、lib/ai/context、lib/services —— 那些是 IO/编排层，
+       * 需要的是 e2e（D5）而不是堆更多 mock 单测。给它们设阈值只会逼出
+       * 「为了覆盖率而 mock 一堆 IO」的假测试。详见 docs/testing.md。
+       */
+      thresholds: {
+        "lib/requirement-lifecycle.ts": { lines: 95, branches: 75 },
+        "lib/services/devcontext-impact.ts": { lines: 95, branches: 80 },
+      },
     },
   },
 });

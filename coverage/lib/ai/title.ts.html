@@ -1,0 +1,397 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for lib/ai/title.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../prettify.css" />
+    <link rel="stylesheet" href="../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../index.html">All files</a> / <a href="index.html">lib/ai</a> title.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">13.63% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>9/66</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/0</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>0/4</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">13.63% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>9/66</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">// 从需求访谈对话中提炼简短需求标题。
+// 注意：本文件生成「标题」，与对话回复无关，绝不能复用对话回复或用户原话作为标题。
+&nbsp;
+import { callAI } from "./client";
+import type { ChatMessage } from "./types";
+&nbsp;
+const TITLE_PROMPT = `你是一名资深产品经理助手。下面提供的是「用户在需求访谈中自己说过的话」（不包含助手的回复）。请仅依据用户亲口陈述的内容，提炼为一句简短的需求标题。
+&nbsp;
+要求：
+- 长度严格 4–12 个汉字（或 6–18 个英文字符）。
+- 只输出标题本身，禁止带引号、书名号、前缀（如"标题："）、标点与换行。
+- 只能基于用户明确说过的诉求提炼，禁止添加、推断或补充用户未明确提及的任何功能、细节或信息。
+- 不要把助手的话、你的理解或任何对话之外的内容写进标题。
+- 允许适度概括以避免照抄原话，但不得凭空发挥；若用户只说了"做个社区"，标题可以是"社区应用"而绝不能加入"打卡""论坛"等用户没说的词。
+- 直接输出标题，不要任何思考过程，也不要出现 &lt;think&gt; 等标记。`;
+&nbsp;
+// 口语化前缀：生成兜底标题时先去掉，避免出现"我想做个xxx"这种原话式标题。
+const SPOKEN_PREFIXES = [
+  "我想做一个", "我想做个", "我想做", "我想开发一个", "我想开发",
+  "帮我做一个", "帮我做个", "帮我做", "我想要一个", "我想要",
+  "我需要做一个", "我需要一个", "我需要", "我打算做一个", "我打算",
+  "做一个", "开发一个", "开发", "做个",
+  "麻烦做一个", "请做一个", "来一个", "整一个",
+];
+&nbsp;
+<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >function stripSpokenPrefix(text: string): string {</span></span>
+<span class="cstat-no" title="statement not covered" >  let t = text.trim();</span>
+<span class="cstat-no" title="statement not covered" >  for (const p of SPOKEN_PREFIXES) {</span>
+<span class="cstat-no" title="statement not covered" >    if (t.startsWith(p)) {</span>
+<span class="cstat-no" title="statement not covered" >      t = t.slice(p.length).trim();</span>
+<span class="cstat-no" title="statement not covered" >      break;</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >  return t;</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;
+// 兜底标题：去口语前缀 + 清洗 + 截断，尽量贴近"提炼"而非"原文"。
+<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >function localTitleFrom(message: string): string | null {</span></span>
+<span class="cstat-no" title="statement not covered" >  const stripped = stripSpokenPrefix(message);</span>
+<span class="cstat-no" title="statement not covered" >  const title = cleanTitle(stripped);</span>
+<span class="cstat-no" title="statement not covered" >  if (!title) return null;</span>
+<span class="cstat-no" title="statement not covered" >  return title.length &gt; 16 ? title.slice(0, 16) : title;</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;
+// 清洗模型输出：剥离思考链标记、代码块、引号、尾部标点。返回 null 表示无有效标题。
+<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >function cleanTitle(raw: string): string | null {</span></span>
+<span class="cstat-no" title="statement not covered" >  if (!raw) return null;</span>
+<span class="cstat-no" title="statement not covered" >  let s = raw;</span>
+  // 剥离  导入后的多余空行
+<span class="cstat-no" title="statement not covered" >  s = s.trim();</span>
+  // 如果内容包含 JSON 代码块或 markdown 代码块，说明 AI 误输出了对话内容，取第一行有效内容
+<span class="cstat-no" title="statement not covered" >  if (s.includes("```") || s.includes("[STEP_COMPLETE]") || s.length &gt; 50) {</span>
+    // 取第一行非空、非标记的内容
+<span class="cstat-no" title="statement not covered" >    const firstLine = s.split("\n").find((l) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >      const t = l.trim();</span>
+<span class="cstat-no" title="statement not covered" >      return t &amp;&amp; !t.startsWith("```") &amp;&amp; !t.startsWith("[") &amp;&amp; !t.startsWith("##");</span>
+<span class="cstat-no" title="statement not covered" >    });</span>
+<span class="cstat-no" title="statement not covered" >    if (firstLine) s = firstLine.trim();</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+  // 剥离 &lt;think&gt;...&lt;/think&gt; 等思考链标记
+<span class="cstat-no" title="statement not covered" >  s = s.replace(/&lt;think[\s\S]*?&lt;\/think&gt;/gi, "");</span>
+  // 剥离残留的 xml 标签
+<span class="cstat-no" title="statement not covered" >  s = s.replace(/&lt;[^&gt;]+&gt;[\s\S]*?&lt;\/[^&gt;]+&gt;/g, "");</span>
+  // 去掉代码块围栏
+<span class="cstat-no" title="statement not covered" >  s = s.replace(/```[\s\S]*?```/g, "");</span>
+  // 去掉首尾反引号/引号
+<span class="cstat-no" title="statement not covered" >  s = s.replace(/^["'`》】」』]+|["'`《【「『]+$/g, "").trim();</span>
+  // 去掉常见前缀
+<span class="cstat-no" title="statement not covered" >  s = s.replace(/^(标题[:：]|title[:：])\s*/i, "");</span>
+  // 去掉尾部标点
+<span class="cstat-no" title="statement not covered" >  s = s.replace(/[。.！!？?，,、；;：:~～\s]+$/g, "").trim();</span>
+<span class="cstat-no" title="statement not covered" >  if (!s) return null;</span>
+  // 避免把整段对话当标题：超长则截断
+<span class="cstat-no" title="statement not covered" >  return s.length &gt; 24 ? s.slice(0, 24) : s;</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >export async function summarizeTitle(</span></span>
+<span class="cstat-no" title="statement not covered" >  messages: { role: "user" | "assistant"; content: string }[]</span>
+<span class="cstat-no" title="statement not covered" >): Promise&lt;string | null&gt; {</span>
+  // 至少要有 1 条用户消息才尝试生成
+<span class="cstat-no" title="statement not covered" >  const userMessages = messages.filter((m) =&gt; m.role === "user" &amp;&amp; m.content.trim());</span>
+<span class="cstat-no" title="statement not covered" >  if (userMessages.length &lt; 1) return null;</span>
+&nbsp;
+  // 只把「用户自己的发言」作为标题生成的依据，绝不包含助手的回复，
+  // 避免助手复述/发挥的内容被模型当成标题素材（导致混入对话中未出现的信息）。
+<span class="cstat-no" title="statement not covered" >  const userOnlyHistory: ChatMessage[] = [</span>
+<span class="cstat-no" title="statement not covered" >    { role: "system", content: TITLE_PROMPT },</span>
+<span class="cstat-no" title="statement not covered" >    ...userMessages.map((m) =&gt; ({</span>
+<span class="cstat-no" title="statement not covered" >      role: "user" as const,</span>
+<span class="cstat-no" title="statement not covered" >      content: m.content,</span>
+<span class="cstat-no" title="statement not covered" >    })),</span>
+<span class="cstat-no" title="statement not covered" >  ];</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  const chatHistory = userOnlyHistory;</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  try {</span>
+<span class="cstat-no" title="statement not covered" >    const result = await callAI("title", chatHistory);</span>
+<span class="cstat-no" title="statement not covered" >    const title = cleanTitle(result.content);</span>
+<span class="cstat-no" title="statement not covered" >    return title; // 可能为 null（模型未产出有效标题）</span>
+<span class="cstat-no" title="statement not covered" >  } catch {</span>
+    // AI 失败：用本地轻提炼兜底，绝不直接使用用户原话
+<span class="cstat-no" title="statement not covered" >    return localTitleFrom(userMessages[0].content);</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-09-28T09:23:26.053Z
+            </div>
+        <script src="../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../sorter.js"></script>
+        <script src="../../block-navigation.js"></script>
+    </body>
+</html>
+    

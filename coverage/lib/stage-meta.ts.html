@@ -1,0 +1,424 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for lib/stage-meta.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../prettify.css" />
+    <link rel="stylesheet" href="../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../index.html">All files</a> / <a href="index.html">lib</a> stage-meta.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">32.69% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>17/52</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/0</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>0/3</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">32.69% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>17/52</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">// 阶段中文标签 / 推进话术 / 阶段推导纯函数。
+// 本文件【不依赖 db】，可被客户端组件（"use client"）安全引用，
+// 不会把 @cloudbase/node-sdk 等 Node 后端代码打进浏览器 bundle。
+//
+// 与后端 app/api/requirements/[id]/conversation/route.ts 中的实现保持一致，
+// 前后端共用，确保对话自动推进与按钮手动进入下一阶段的提示文案一致。
+export const STAGE_LABELS: Record&lt;string, string&gt; = {
+  dialoguing: "需求确认",
+  research_analysis: "调研分析",
+  design: "方案设计",
+  prd_writing: "需求文档",
+};
+&nbsp;
+// design 步骤下的「原型设计」子阶段标签（方案文档确认后进入的子阶段，
+// 与上方 STAGE_LABELS 一一对应的子级标签，统一在回复话术里复用，避免散落硬编码）
+export const PROTOTYPE_STAGE_LABEL = "原型设计（交互原型）";
+&nbsp;
+// 用户主动确认推进时的合成回复话术（与后端 proceedReplyText 一致）。
+// 保证非空，修复按钮进入下一阶段时对话面板毫无反馈的问题。
+//
+// 文案风格统一起见，所有 subPhase / nextStep 路径都以"好的，xxx 已确认"打头，
+// 仅在最后用方括号「」指出推进到的具体阶段（含子阶段"原型设计（交互原型）"）。
+export <span class="fstat-no" title="function not covered" >function proceedReplyText(</span>
+<span class="cstat-no" title="statement not covered" >  step: string,</span>
+<span class="cstat-no" title="statement not covered" >  nextStep: string | null,</span>
+<span class="cstat-no" title="statement not covered" >  subPhase?: string</span>
+<span class="cstat-no" title="statement not covered" >): string {</span>
+<span class="cstat-no" title="statement not covered" >  if (subPhase === "prototype") {</span>
+<span class="cstat-no" title="statement not covered" >    return `好的，${STAGE_LABELS[step] ?? ""}已确认。正在为您推进到「${PROTOTYPE_STAGE_LABEL}」…`;</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >  if (!nextStep) return `好的，${STAGE_LABELS[step] ?? ""}已完成，已为您标记完成。`;</span>
+<span class="cstat-no" title="statement not covered" >  return `好的，${STAGE_LABELS[step] ?? ""}已确认。正在为您推进到「${STAGE_LABELS[nextStep]}」…`;</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;
+// 步骤 → 阶段状态 的映射（步骤完成度由 requirement_steps 表独立管理，
+// 阶段标签据步骤 state 实时推导，不再依赖创建后不再更新的 requirement.status 字段）。
+import type {
+  Requirement,
+  RequirementStatus,
+  RequirementStep,
+  StepName,
+  StepState,
+} from "@/types";
+&nbsp;
+const STEP_TO_STATUS: Record&lt;StepName, RequirementStatus&gt; = {
+  dialoguing: "dialoguing",
+  research_analysis: "researching",
+  design: "designing",
+  prd_writing: "prd_writing",
+};
+&nbsp;
+/**
+ * 纯函数：判断「需求卡片」是否已定版（完成态、带版本号）。
+ * 不触碰 db，可在客户端/服务端通用。
+ *
+ * 定版的稳定事实（不可回退）：
+ *  - currentVersion &gt;= 1：首次定版（dialoguing 置 done）时由 finalizeCardVersion 写入；
+ *  - 确认闸门曾打开（awaitingConfirm === true 且 dialoguing 步骤非 not_started）：
+ *    需求确认达标后即便用户尚未点「确认并进入下一阶段」（state 仍 in_progress），
+ *    卡片本身已是一个有版本号的完成态产物。
+ *
+ * 这是修复「切出详情页再进入时需求卡片状态回落为进行中」的关键判据：
+ * 一旦卡片定版，状态推导不再因 dialoguing 步骤的 state 残留（未落库为 done）
+ * 或后续阶段推进 / generating 标记而回落为 "dialoguing"。
+ */
+export <span class="fstat-no" title="function not covered" >function isCardFinalized(</span>
+<span class="cstat-no" title="statement not covered" >  awaitingConfirm: boolean,</span>
+<span class="cstat-no" title="statement not covered" >  currentVersion: number,</span>
+<span class="cstat-no" title="statement not covered" >  dialoguingState?: StepState</span>
+<span class="cstat-no" title="statement not covered" >): boolean {</span>
+<span class="cstat-no" title="statement not covered" >  if (currentVersion &gt;= 1) return true;</span>
+<span class="cstat-no" title="statement not covered" >  if (awaitingConfirm &amp;&amp; dialoguingState &amp;&amp; dialoguingState !== "not_started")</span>
+<span class="cstat-no" title="statement not covered" >    return true;</span>
+<span class="cstat-no" title="statement not covered" >  return false;</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;
+/**
+ * 纯函数：依据 requirement_steps 的实际完成情况推导需求当前所处阶段。
+ * 不触碰 db，可在客户端/服务端通用。
+ * - 已归档 → "archived"
+ * - 全部步骤 done → "completed"
+ * - 否则取首个未完成步骤，映射为其对应阶段
+ * - 无步骤记录（存量老数据未初始化）→ 回退到原 status，避免崩溃
+ *
+ * opts.cardFinalized：需求卡片是否已定版（见 isCardFinalized）。为真时，
+ * 「需求确认（dialoguing）」阶段视为已完成参与推导，整体阶段不再回落为
+ * "dialoguing"，但后续阶段标签仍由各自步骤 state 正常驱动。
+ */
+export <span class="fstat-no" title="function not covered" >function deriveRequirementStatus(</span>
+<span class="cstat-no" title="statement not covered" >  req: Requirement,</span>
+<span class="cstat-no" title="statement not covered" >  steps: RequirementStep[],</span>
+<span class="cstat-no" title="statement not covered" >  opts?: { cardFinalized?: boolean }</span>
+<span class="cstat-no" title="statement not covered" >): RequirementStatus {</span>
+  // 口径统一为 snake_case：写入侧与各处 list 过滤用的都是 archived_at，
+  // 这里原本读的是 camelCase 的 archivedAt，因此该分支从未命中过（M1 修复）。
+<span class="cstat-no" title="statement not covered" >  if (req.archived_at) return "archived";</span>
+  // 无步骤记录 = 存量老数据未初始化。requirements 表已无 status 列（M1 T9），
+  // 读出必为 undefined，回退到工作流第一阶段而不是 undefined，避免 UI 拿到空状态。
+<span class="cstat-no" title="statement not covered" >  if (steps.length === 0) return req.status ?? "dialoguing";</span>
+<span class="cstat-no" title="statement not covered" >  const sorted = [...steps].sort(</span>
+<span class="cstat-no" title="statement not covered" >    (a, b) =&gt; STEP_KEYS.indexOf(a.step) - STEP_KEYS.indexOf(b.step)</span>
+<span class="cstat-no" title="statement not covered" >  );</span>
+<span class="cstat-no" title="statement not covered" >  const finalized = opts?.cardFinalized ?? false;</span>
+  // 卡片已定版：dialoguing 步骤视为已完成，不再作为「首个未完成步骤」参与推导，
+  // 避免其 state 残留 in_progress 把整体阶段错误地回落成 "dialoguing"。
+<span class="cstat-no" title="statement not covered" >  const current = sorted.find(</span>
+<span class="cstat-no" title="statement not covered" >    (s) =&gt; s.state !== "done" &amp;&amp; !(finalized &amp;&amp; s.step === "dialoguing")</span>
+<span class="cstat-no" title="statement not covered" >  );</span>
+<span class="cstat-no" title="statement not covered" >  if (!current) return "completed";</span>
+<span class="cstat-no" title="statement not covered" >  return STEP_TO_STATUS[current.step];</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;
+import { STEP_KEYS } from "@/lib/steps-meta";
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-09-28T09:23:26.053Z
+            </div>
+        <script src="../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../sorter.js"></script>
+        <script src="../block-navigation.js"></script>
+    </body>
+</html>
+    

@@ -173,6 +173,28 @@
 
 **Phase 4 闸门 = M5 整体验收**：A1（定向重算逐字节断言）+ A2（CI 全绿无 skip/only）+ B1–B6 + C1–C8 + D1–D7（原验收表全文有效）。
 
+> 🚧 **Phase 4 部分交付（2026-09-28）**——已做 P4-1 / P4-2 / P4-3 / P4-7；**P4-4 ~ P4-6（e2e + CI）待定**：
+> - ✅ **P4-1 契约测试**：`tests/contract/impact-map.spec.ts`（7 条：Trigger 全覆盖 / section 名合法 /
+>   反向覆盖 / PRD 隔离 / 闭包无环收敛 / 卡片字段反射全覆盖 / ALWAYS_RECOMPUTE 恒并入）。
+> - ✅ **P4-2 影响解析金样本**：`tests/unit/devcontext-impact.spec.ts`（**25 条**：9 组金样本 +
+>   未知 trigger 的 fail-safe + fail-safe 边界 + decision 特例 + 确定性与去重 + `presentSections` + `buildStaleMeta`）。
+> - ✅ **P4-3 其余单测**：新增 `tests/unit/change-analyzer.spec.ts`（14 条：候选窗口过滤 / 依赖序 /
+>   非变更意图 / JSON 三形态兜底 / 解析失败返 null / prototype 补窗 / `outputsToTriggers`）与
+>   `tests/unit/steps-harness.spec.ts`（13 条：`isFrontierStep` 连续前缀不变量 / `nextStepOf` 边界 /
+>   **`setStepState` 的条件写语义** / `completeStepAndAdvance` 末步不越界 / **生命周期同步钩子必须在**）。
+>   validator 与 renderer 的 spec 在 P0 迁移时已存在（`devcontext-validate.spec.ts` / `devcontext-render.spec.ts`）。
+> - ✅ **P4-7 文档**：`docs/testing.md` 新建（含**「新增 trigger / section / 卡片字段 / 生命周期状态 / 闸门
+>   必须同批改哪些文件」的操作手册**、mock 确定性三纪律、覆盖率策略、真库冒烟脚本清单）；
+>   `docs/mcp-guide.md` 补 `_meta.maybe_stale` 一节；本文件追记。
+> - ✅ **覆盖率卡口**：只给两个纯函数模块立阈值（`requirement-lifecycle.ts` 与
+>   `devcontext-impact.ts` 各 **≥95% lines**，实测均已 **100%**）。**全局 60% 刻意不启用**——
+>   当前全局 ≈36%，未覆盖的大头是 IO / 编排层，需要的是 e2e 而不是堆 mock 单测。
+> - ⏳ **P4-4 ~ P4-6 未做**：Playwright 及其浏览器尚未安装（新依赖 + 浏览器下载）；
+>   计划书 §6「裁剪选项」本就把它列为**可延后到上线后**的项。
+>   **A1 这条最硬的验收标准目前由真库冒烟 `scripts/smoke-devcontext-refresh.ts` 覆盖**
+>   （「未受影响段逐字节不变」+ 结构化 changelog 对账），不是空白。
+>   落地时的三个坑已写进 `docs/testing.md` 第 7 节（seed 必须走 HTTP / `workers: 1` / 双重守卫）。
+
 ---
 
 ## 3. 关键 DDL（P1-4，幂等，写入 `db/schema.sql`）
