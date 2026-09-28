@@ -84,6 +84,13 @@ export interface Requirement {
    * 供列表页展示「生成中」动效/角标使用。
    */
   generatingStep?: StepName | null;
+  /**
+   * 【落库字段】需求生命周期（M5 需求级状态机，6 态）。
+   * 唯一写入口：lib/services/requirement-status.ts；规则层：lib/requirement-lifecycle.ts。
+   * 与派生的 status（阶段标签）是两种粒度：lifecycle 服务于看板/筛选/MCP/可编辑性，
+   * status 服务于需求工作台内部的步骤条展示——二者不可互相替代。
+   */
+  lifecycle?: import("@/lib/requirement-lifecycle").RequirementLifecycle;
   priority?: "low" | "medium" | "high";
   tags?: string[];
   category?: string;

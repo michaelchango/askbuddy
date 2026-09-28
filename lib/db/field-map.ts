@@ -40,6 +40,7 @@ export const TABLES: ReadonlySet<string> = new Set([
   "doc_sections",
   "visits", // 体验访问埋点（运营统计，非业务表）
   "knowledge_entries", // M4 知识复利
+  "requirement_status_history", // M5 状态迁移审计
 ]);
 
 /** 代码键 → PG 列名。同名项也必须显式列出（见维护约定 2）。 */
@@ -72,6 +73,20 @@ export const FIELD_MAP: Readonly<Record<string, Readonly<Record<string, string>>
     createdAt: "created_at",
     updatedAt: "updated_at",
     archived_at: "archived_at",
+    lifecycle: "lifecycle", // M5 需求生命周期（唯一写入口：lib/services/requirement-status.ts）
+    lifecycle_updated_at: "lifecycle_updated_at",
+  },
+
+  // M5 状态迁移审计（每次迁移一行，永不删除）
+  requirement_status_history: {
+    id: "id",
+    requirement_id: "requirement_id",
+    from_state: "from_state",
+    to_state: "to_state",
+    actor: "actor",
+    reason: "reason",
+    source: "source",
+    created_at: "created_at",
   },
 
   conversations: {
@@ -241,6 +256,8 @@ export const FIELD_MAP: Readonly<Record<string, Readonly<Record<string, string>>
     present_count: "present_count",
     upstream_ids: "upstream_ids",
     maybe_stale: "maybe_stale",
+    stale_sections: "stale_sections", // M5 变更联动
+    stale_reason: "stale_reason", // M5 变更联动
     generated_by: "generated_by",
     updated_at: "updated_at",
   },
@@ -358,6 +375,7 @@ export const TIMESTAMP_COLS: Readonly<Record<string, readonly string[]>> = {
   doc_sections: [], // M3（无时间戳列）
   visits: ["created_at"], // 体验访问埋点
   knowledge_entries: ["created_at", "updated_at"], // M4
+  requirement_status_history: ["created_at"], // M5 状态迁移审计
 };
 
 /**
@@ -395,6 +413,7 @@ export const JSONB_COLS: Readonly<Record<string, readonly string[]>> = {
   doc_sections: ["source"], // M3
   visits: [], // 体验访问埋点（无 JSONB 列）
   knowledge_entries: [], // M4（embedding 是 vector，非 JSONB，走 VECTOR_COLS）
+  requirement_status_history: [], // M5 状态迁移审计（无 JSONB 列）
 };
 
 /**
@@ -435,6 +454,7 @@ export const BIGINT_COLS: Readonly<Record<string, readonly string[]>> = {
   dev_context_versions: ["id"],
   visits: ["id"], // 体验访问埋点：id 为 BIGINT 自增主键
   knowledge_entries: [], // M4（access_count 为 INTEGER，非 int8）
+  requirement_status_history: [], // M5 状态迁移审计（id 为 TEXT 主键，非 int8）
 };
 
 /**
@@ -469,6 +489,7 @@ export const ALLOWED_ID_KEYS: Readonly<Record<string, readonly string[]>> = {
   doc_sections: ["id"], // M3
   visits: ["id"], // 体验访问埋点
   knowledge_entries: ["id"], // M4
+  requirement_status_history: ["id"], // M5 状态迁移审计
 };
 
 /**
@@ -500,4 +521,5 @@ export const ORDER_HINT: Readonly<Record<string, string | undefined>> = {
   doc_sections: "id", // M3（无时间戳列，用主键排序）
   visits: "id", // 体验访问埋点：按自增主键即时间序
   knowledge_entries: "updated_at", // M4
+  requirement_status_history: "created_at", // M5 状态迁移审计：按时间序
 };

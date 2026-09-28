@@ -1,6 +1,8 @@
 // 步骤状态服务：requirement_steps 表 CRUD。
 // 说明：requirement_steps 同时保留旧字段 completion（内容完整度，[暂不使用]），
 // 本轮新增 state（流程节点状态）作为状态流转与 UI 展示的唯一依据。
+// 本模块是【阶段级状态】的唯一写入口；【需求级生命周期】（M5）的
+// 唯一写入口见 lib/services/requirement-status.ts，两者分层共存、不可合并。
 import { db } from "@/lib/db";
 import { STEP_KEYS, nextStepOf } from "@/lib/steps-meta";
 import type { StepName, StepState, StepCompletion, RequirementStep } from "@/types";
@@ -161,6 +163,15 @@ export async function setStepState(
       created_at: now,
     });
   }
+
+  // 生命周期同步：步骤状态是需求级生命周期的派生源之一。
+  // 动态导入避免与 requirement-status.ts 形成模块循环（同 markStepDone 的既有做法）。
+  try {
+    const { syncLifecycleFromSteps } = await import("./requirement-status");
+    await syncLifecycleFromSteps(requirementId);
+  } catch {
+    /* 同步失败不阻塞步骤推进（状态机是增强能力，绝不卡死核心四步流程） */
+  }
 }
 
 // 便捷封装：步骤完成（置【已完成】，并写 completed_at、清除确认闸门）
@@ -232,6 +243,13 @@ export async function setAwaitingConfirm(
     { requirement_id: requirementId, step },
     { awaiting_confirm: value ? 1 : 0, updated_at: new Date().toISOString() }
   );
+  // 生命周期同步：确认闸门开合会改变 checkGate 结果与派生判定，需刷新。
+  try {
+    const { syncLifecycleFromSteps } = await import("./requirement-status");
+    await syncLifecycleFromSteps(requirementId);
+  } catch {
+    /* 同步失败不阻塞闸门切换 */
+  }
 }
 
 // 仅更新生成中标记 generating（不影响 state/version 等其它字段）。

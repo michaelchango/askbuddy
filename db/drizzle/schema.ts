@@ -128,11 +128,15 @@ export const requirements = pgTable(
     createdAt: ts("created_at").notNull().defaultNow(),
     updatedAt: ts("updated_at").notNull().defaultNow(),
     archivedAt: ts("archived_at"),
+    /** M5 需求生命周期（需求级状态机）。唯一写入口：lib/services/requirement-status.ts */
+    lifecycle: text("lifecycle").notNull().default("created"),
+    lifecycleUpdatedAt: ts("lifecycle_updated_at"),
   },
   (t) => ({
     idxProject: index("idx_req_project")
       .on(t.projectId, t.updatedAt.desc())
       .where(sql`archived_at IS NULL`),
+    idxLifecycle: index("idx_requirements_lifecycle").on(t.projectId, t.lifecycle),
     ckTitleSource: check(
       "ck_req_title_source",
       sql`${t.titleSource} IS NULL OR ${t.titleSource} IN ('manual', 'auto')`
@@ -141,6 +145,27 @@ export const requirements = pgTable(
       "ck_req_priority",
       sql`${t.priority} IS NULL OR ${t.priority} IN ('low', 'medium', 'high')`
     ),
+  })
+);
+
+/** M5 状态迁移审计（每次迁移一行，永不删除）。completed→designing 必带 reason。 */
+export const requirementStatusHistory = pgTable(
+  "requirement_status_history",
+  {
+    id: text("id").primaryKey(),
+    requirementId: text("requirement_id")
+      .notNull()
+      .references(() => requirements.id, { onDelete: "cascade" }),
+    fromState: text("from_state"),
+    toState: text("to_state").notNull(),
+    actor: text("actor").notNull(),
+    reason: text("reason"),
+    /** manual | derived | change_cascade */
+    source: text("source").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    idxRid: index("idx_req_status_history_rid").on(t.requirementId, t.createdAt.desc()),
   })
 );
 
@@ -516,6 +541,10 @@ export const devContexts = pgTable(
     /** 与 prds/solutions 同惯例，供 M5 变更联动。 */
     upstreamIds: jsonb("upstream_ids").notNull().default([]),
     maybeStale: smallint("maybe_stale").notNull().default(0),
+    /** M5 变更联动：被判定需重算的 section 集合（已含闭包展开结果）。 */
+    staleSections: jsonb("stale_sections").notNull().default([]),
+    /** M5 变更联动：{ section: [trigger, ...] }，供 UI 显示"因何过期"。 */
+    staleReason: jsonb("stale_reason"),
     generatedBy: text("generated_by"),
     updatedAt: ts("updated_at").notNull().defaultNow(),
   },

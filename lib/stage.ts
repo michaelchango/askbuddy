@@ -1,5 +1,10 @@
 // 阶段推导（依赖 db 的部分）。
 //
+// 【分工】本模块负责【阶段标签】（4 步派生，服务于需求工作台内部展示）。
+// 【需求生命周期】（6 态状态机，服务于看板/筛选/MCP/可编辑性）见
+// lib/requirement-lifecycle.ts（规则）与 lib/services/requirement-status.ts（写入）。
+// 两者是不同粒度，不可互相替代——合并二者会重蹈"状态双源"技术债。
+//
 // ⚠️ 本文件会 import db（Node 后端），因此【只能被服务端代码引用】，
 // 禁止被 "use client" 组件直接 import，否则会把 @cloudbase/node-sdk 打进浏览器 bundle。
 // 客户端组件请改用 @/lib/stage-meta 获取 STAGE_LABELS / proceedReplyText /
@@ -91,6 +96,14 @@ export async function attachDerivedStatus(
       ...req,
       status: deriveRequirementStatus(req, steps, { cardFinalized }),
       generatingStep: generating ? generating.step : null,
+      // M5：透传需求生命周期（落库列，读列不派生——写入口在
+      // lib/services/requirement-status.ts，规则在 lib/requirement-lifecycle.ts）。
+      // 存量行未回填时按 archived_at 兜底归档态，其余交由 backfill 脚本。
+      lifecycle:
+        req.lifecycle ??
+        ((req as unknown as Record<string, unknown>).archived_at
+          ? "archived"
+          : undefined),
     };
   });
 }

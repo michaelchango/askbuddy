@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import useSWR, { mutate as globalMutate } from "swr";
 import { ChevronRight, ChevronDown, PanelRightOpen, Sparkles } from "lucide-react";
+import { LifecycleControls } from "@/components/requirements/lifecycle-controls";
 import {
   UserContext,
   type ShellUser,
@@ -1470,6 +1471,8 @@ export function RequirementShell({
             </div>
 
             <div className="flex items-center gap-2">
+              {/* M5：需求生命周期徽标 + 迁移操作（提交复核/通过/打回/归档） */}
+              <LifecycleControls requirementId={requirementId} />
               {/* M4：需求完成后提供「沉淀知识」入口，跳转到项目知识库页 */}
               {req?.status === "completed" && projectId && (
                 <Link

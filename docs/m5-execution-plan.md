@@ -66,6 +66,14 @@
 
 **Phase 1 闸门**：`npm run verify` 全绿 + 新增 `requirement-lifecycle.spec.ts`（36 组迁移矩阵全枚举、`deriveLifecycle` 判定顺序与「永不产出人工态」、`checkGate` 逐条、同步不覆盖人工态）+ 手动冒烟：走一遍四步流程确认零回归（B5）。
 
+> ✅ **Phase 1 已交付（2026-09-28）**，闸门结果与两处实施偏差：
+> - 单测拆两个文件：`tests/unit/requirement-lifecycle.spec.ts`（纯函数规则，10 用例）+ `tests/unit/requirement-status.spec.ts`（服务层，mock db/steps，25 用例）。合计 75 用例全绿。
+> - 端到端冒烟脚本 `scripts/smoke-lifecycle-api.ts`（真库 + 真 HTTP，32 项断言）替代纯手工冒烟：覆盖 400/409 语义区分、`force` 越闸、人工态不被覆盖、审计表逐行核对、解档、级联清理。
+> - **实施中修掉的两个真实缺陷**（均只在真库路径暴露，mocked 单测抓不到）：
+>   1. `writeLifecycle` 把 `requirements` 的时间戳写成 `updated_at`，但该表是 camelCase 漂移表（正确代码键 `updatedAt`）→ `toColumns` 抛「字段契约漂移」，而同步钩子吞异常 ⇒ **生命周期静默不推进**。已修，并加了一条「写入键必须在 field-map 登记」的单测护栏。
+>   2. 路由先跑 `checkGate` 再判合法性 ⇒ `created→completed` 这类**不存在的路径**被误报 409。已改为合法性（400）先于闸门（409），且复用已读到的当前态避免多付一次跨网关往返。
+> - 偏差（有意为之）：`completed→designing` 缺 reason 从裸 `Error` 升级为 `LifecycleReasonRequiredError`，使 API 返回 400 而非 500。UI 合并为单组件 `lifecycle-controls.tsx`（计划里的 badge/actions 两个文件）。生命周期变更后的刷新沿用本仓库既有的 SWR `globalMutate`（计划提到的 `askbuddy:steps-updated` 事件在 `lib/events.ts` 中并不存在）。
+
 ### Phase 2 · 变更联动到 DevContext（D2，约 3 天）
 
 | # | 任务 | 文件 | 要点 |

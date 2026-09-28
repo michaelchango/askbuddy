@@ -160,7 +160,9 @@ export default function ProjectRequirementsPage() {
 
   const filtered = requirements
     .filter((r) => {
-      if (phaseFilter === "all") return true;
+      // M5：默认视图（全部阶段）不展示已归档——归档是「收起」语义，需要时用
+      // 「已归档」筛选项显式查看，避免归档需求稀释默认列表的信噪比。
+      if (phaseFilter === "all") return r.status !== "archived";
       return r.status === phaseFilter;
     })
     .filter((r) => {

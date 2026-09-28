@@ -77,10 +77,42 @@ CREATE TABLE requirements (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   archived_at     TIMESTAMPTZ NULL,
+  -- M5 需求生命周期（需求级状态机）。唯一写入口：lib/services/requirement-status.ts
+  lifecycle            TEXT        NOT NULL DEFAULT 'created',
+  lifecycle_updated_at TIMESTAMPTZ NULL,
   CONSTRAINT pk_requirements PRIMARY KEY (id),
   CONSTRAINT fk_req_project FOREIGN KEY (project_id)
     REFERENCES projects(id) ON DELETE RESTRICT   -- 防误删项目连带删光需求
 );
+
+-- M5 需求生命周期（需求级状态机，区别于 requirement_steps 的阶段级状态）。
+-- 用 IF NOT EXISTS 保证 db-setup 幂等；lifecycle 列的写入方只有
+-- lib/services/requirement-status.ts（唯一写入口纪律）。
+ALTER TABLE requirements
+  ADD COLUMN IF NOT EXISTS lifecycle TEXT NOT NULL DEFAULT 'created';
+ALTER TABLE requirements
+  ADD COLUMN IF NOT EXISTS lifecycle_updated_at TIMESTAMPTZ NULL;
+CREATE INDEX IF NOT EXISTS idx_requirements_lifecycle
+  ON requirements (project_id, lifecycle);
+
+-- 状态迁移审计（每次迁移一行，永不删除）。
+-- completed→designing 的返工迁移必须带 reason，是审计可信的前提。
+CREATE TABLE IF NOT EXISTS requirement_status_history (
+  id             TEXT        NOT NULL,
+  requirement_id TEXT        NOT NULL,
+  from_state     TEXT        NULL,
+  to_state       TEXT        NOT NULL,
+  actor          TEXT        NOT NULL,
+  reason         TEXT        NULL,
+  source         TEXT        NOT NULL
+                   CHECK (source IN ('manual', 'derived', 'change_cascade')),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT pk_req_status_history PRIMARY KEY (id),
+  CONSTRAINT fk_req_status_history_req FOREIGN KEY (requirement_id)
+    REFERENCES requirements(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_req_status_history_rid
+  ON requirement_status_history (requirement_id, created_at DESC);
 
 
 -- ---------------- 对话记录（仅追加） ----------------
@@ -296,10 +328,19 @@ CREATE TABLE dev_contexts (
   present_count      INTEGER     NOT NULL DEFAULT 0,
   upstream_ids       JSONB       NOT NULL DEFAULT '[]'::jsonb,  -- 与 prds/solutions 同惯例，供 M5 变更联动
   maybe_stale        SMALLINT    NOT NULL DEFAULT 0,            -- 同上
+  stale_sections     JSONB       NOT NULL DEFAULT '[]'::jsonb,  -- M5：需重算的 section 集合（已含闭包展开）
+  stale_reason       JSONB       NULL,                          -- M5：{ section: [trigger,...] }，供 UI 显示"因何过期"
   generated_by       TEXT,
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_devctx_score ON dev_contexts (completeness_score);
+
+-- M5 变更联动：section 级失效标记（组 2）。
+-- stale_reason 存 { section: [trigger, ...] }，供 UI 显示"因何过期"。
+ALTER TABLE dev_contexts
+  ADD COLUMN IF NOT EXISTS stale_sections JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE dev_contexts
+  ADD COLUMN IF NOT EXISTS stale_reason JSONB NULL;
 
 -- 版本快照（与 prd_versions / solution_versions 完全同构）
 CREATE TABLE dev_context_versions (
