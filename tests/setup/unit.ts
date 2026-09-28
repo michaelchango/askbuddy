@@ -6,6 +6,9 @@
 process.env.USE_MOCK = "true";
 process.env.AI_MOCK = "true";
 process.env.AI_MOCK_DELAY_MS = "0";
+// M5-D3：关掉 AI 层的结构化日志——单测里几百次调用会把断言输出淹没。
+// 生产默认开启（单行 JSON，可 grep 可聚合）。
+process.env.AI_CALL_LOG = "0";
 process.env.PAT_SALT = "prdflow-pat-v1"; // 存量 PAT 盐：显式钉住（总览 T7）
 
 import { beforeEach } from "vitest";

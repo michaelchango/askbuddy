@@ -138,6 +138,27 @@
 
 **Phase 3 闸门**：`ai-provider.spec.ts`（选择顺序、mock 确定性 100 次、fixture 源码静态扫描无随机源、retry 行为、callAI/streamAI 签名回归、降级路径）+ 手动冒烟真实 CloudBase 链路一轮（R-M5-5）。
 
+> ✅ **Phase 3 已交付（2026-09-28）**——P3-1 ~ P3-6 全部落地：
+> - **闸门实测**：`npm run verify` 全绿（**132 单测**，其中 ai-provider 28 条）；真实链路冒烟
+>   `scripts/smoke-ai-provider.ts` **7/7**（真调 hy3 1.3s；结构化日志字段完整；callAI/streamAI 签名未变；流式 12 块可读；abort 生效）。
+> - **实现清单**：`lib/ai/provider.ts`（ProviderId/AIProvider/四级选择）、
+>   `lib/ai/retry.ts`（withRetry + classifyAIError + AICallError）、
+>   `lib/ai/providers/{cloudbase,openai-compatible,mock}.ts`、`lib/ai/mock/hash.ts` +
+>   `lib/ai/mock/fixtures/{index,dialoguing,research-analysis,dev-context,change-analysis,card-merge,misc}.ts`；
+>   `lib/ai/client.ts` 改为编排层（签名冻结）。
+> - **三处实现校准（需知悉）**：
+>   1. **`GenerateOptions` 追加可选 `taskType`**（原文档接口没有它）：mock 必须按任务选夹具，
+>      而 `model` 无法反查任务（`hy3-preview` 同时服务 4 个任务）。用「读 prompt 特征猜任务」
+>      会让 10 个任务里大多数退化成同一个占位输出，**D4/D5 的全部断言都建立在这上面**。
+>      真实 provider 忽略该字段；`callAI`/`streamAI` 对外签名不受影响。
+>   2. **`card-merge` / `change-analysis` 两个夹具挂在 `dialoguing` 任务上**（历史原因：它们复用对话模型），
+>      只能靠 system prompt 的固定特征串识别；`ai-provider.spec.ts` 有「特征串仍存在」用例守护，
+>      改 prompt 会让 CI 报红而不是静默走错夹具。
+>   3. **`withRetry` 的退避基数支持 `AI_RETRY_BASE_MS` 覆盖**（测试置 0）：否则一个重试用例
+>      要白等 2.4s，CI 会被这类等待拖垮。
+> - 另：`AI_CALL_LOG=0` 可关闭结构化日志（单测/e2e 里几百次调用会淹没断言输出），
+>   `tests/setup/unit.ts` 已默认置 0。
+
 ### Phase 4 · 测试基建收尾 + e2e + CI（D4/D5，约 2.5 天）
 
 | # | 任务 | 文件 | 要点 |
