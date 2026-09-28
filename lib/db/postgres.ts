@@ -26,6 +26,7 @@ import {
   REVERSE_MAP,
   TABLES,
   TIMESTAMP_COLS,
+  VECTOR_COLS,
 } from "./field-map";
 import {
   type DbBackend,
@@ -127,6 +128,10 @@ function isJsonbCol(table: string, col: string): boolean {
   return (JSONB_COLS[table] ?? []).includes(col);
 }
 
+function isVectorCol(table: string, col: string): boolean {
+  return (VECTOR_COLS[table] ?? []).includes(col);
+}
+
 /**
  * 业务对象（代码键）→ 数据库列对象（列名）。
  * JSONB 列在此序列化：postgres.js 会把 JS 数组当成 PG array 处理，
@@ -147,6 +152,10 @@ function toColumns(table: string, row: Row): Record<string, unknown> {
     }
     if (isJsonbCol(table, col)) {
       out[col] = value === null ? null : JSON.stringify(value);
+    } else if (isVectorCol(table, col)) {
+      // vector 列：number[] → '[0.1,0.2]' 字符串，交给 PG 隐式 text→vector 转换。
+      // 不能交给 postgres.js 的数组推断（会把 number[] 当 PG array 处理而写坏）。
+      out[col] = value === null ? null : JSON.stringify(value);
     } else {
       out[col] = value;
     }
@@ -160,6 +169,7 @@ function toRow<T = Row>(table: string, dbRow: Row | undefined): T | undefined {
   const reverse = REVERSE_MAP[table] ?? {};
   const tsCols = TIMESTAMP_COLS[table] ?? [];
   const bigCols = BIGINT_COLS[table] ?? [];
+  const vectorCols = VECTOR_COLS[table] ?? [];
   const out: Row = {};
 
   for (const [col, raw] of Object.entries(dbRow)) {
@@ -178,6 +188,10 @@ function toRow<T = Row>(table: string, dbRow: Row | undefined): T | undefined {
         // postgres.js 默认把 int8 返回为字符串以防精度丢失，
         // 但代码把它们当数字用（conversations 的 `a.id - b.id` 排序会变成 NaN）。
         value = typeof raw === "number" ? raw : Number(raw);
+      } else if (vectorCols.includes(col)) {
+        // vector 列读出：postgres.js 可能返回 '[0.1,0.2]' 字符串或 number[]。
+        // 统一还原为 number[]，让业务层始终面对同一形状。
+        value = parseVector(raw);
       }
     }
 
@@ -189,6 +203,22 @@ function toRow<T = Row>(table: string, dbRow: Row | undefined): T | undefined {
 
 function toRows<T = Row>(table: string, dbRows: readonly Row[]): T[] {
   return dbRows.map((r) => toRow<T>(table, r) as T);
+}
+
+/** vector 列读出还原：'[0.1,0.2]' 或 [0.1,0.2] → number[]。失败回退原值（宁缺毋误）。 */
+function parseVector(raw: unknown): unknown {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    if (s.startsWith("[") && s.endsWith("]")) {
+      try {
+        return JSON.parse(s);
+      } catch {
+        return raw;
+      }
+    }
+  }
+  return raw;
 }
 
 // ---------------------------------------------------------------------------

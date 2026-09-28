@@ -379,6 +379,46 @@ CREATE TABLE doc_sections (
 CREATE INDEX idx_docsec_req ON doc_sections (requirement_id, target_type, version);
 
 
+-- ============================================================
+-- M4 · 知识复利（项目级知识库 + 语义检索）
+-- ============================================================
+-- 沉淀已确立的业务规则/术语/决策/约束，生成时经向量检索注入上下文并溯源。
+-- 维度 1024 不可逆（R3 红线）：建表前已由 scripts/poc/embedding-probe.ts 实测
+-- 混元 Embedding 返回维度 === EMBEDDING_DIMENSIONS（1024），留档后建表。
+-- embedding 列用 vector(1024)，检索走 1 - (embedding <=> $q::vector) 余弦下推。
+
+-- ---------------- 知识条目 ----------------
+CREATE TABLE knowledge_entries (
+  id                 TEXT        NOT NULL,
+  project_id         TEXT        NOT NULL,
+  title              TEXT        NOT NULL,
+  content            TEXT        NOT NULL,
+  embedding          vector(1024) NULL,            -- 语义向量（软删后置 NULL，禁参与检索）
+  category           TEXT        NOT NULL DEFAULT 'rule'
+                       CHECK (category IN ('rule', 'term', 'decision', 'constraint')),
+  source_type        TEXT        NOT NULL DEFAULT 'manual'
+                       CHECK (source_type IN ('manual', 'decision')),
+  source_ref         TEXT        NULL,              -- 来源引用（如需求 id / 决策 id 的可读描述）
+  source_decision_id TEXT        NULL,              -- 沉淀上游：M3 decisions.id（三道去重闸之一）
+  source_hash        TEXT        NULL,              -- 内容去重指纹（sha256，normalize 后）
+  status             TEXT        NOT NULL DEFAULT 'active'
+                       CHECK (status IN ('active', 'deprecated')),
+  access_count       INTEGER     NOT NULL DEFAULT 0,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT pk_knowledge_entries PRIMARY KEY (id),
+  CONSTRAINT fk_know_project FOREIGN KEY (project_id)
+    REFERENCES projects(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_know_project ON knowledge_entries (project_id, status, updated_at DESC);
+CREATE INDEX idx_know_hash ON knowledge_entries (project_id, source_hash);
+CREATE INDEX idx_know_decision ON knowledge_entries (source_decision_id)
+  WHERE source_decision_id IS NOT NULL;
+-- HNSW 向量索引：检索向量列，加快 topK 召回（pgvector 0.5+ 支持）。
+-- 数据量较小时可不建，量级上来的再开；先注释留档，避免空表建索引无意义开销。
+-- CREATE INDEX idx_know_embedding ON knowledge_entries USING hnsw (embedding vector_cosine_ops);
+
+
 -- ---------------- API Token（PAT） ----------------
 CREATE TABLE api_tokens (
   id           TEXT        NOT NULL,

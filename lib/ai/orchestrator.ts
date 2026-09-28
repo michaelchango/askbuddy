@@ -51,6 +51,7 @@ export async function streamDialogue(
         history: ctx.history as ChatMessage[] | undefined,
         references: refBlocks.length ? refBlocks.join("\n\n") : undefined,
         upstream: ctx.upstream,
+        knowledge: ctx.knowledge,
       }),
     },
   ];
@@ -129,6 +130,7 @@ export async function runGeneration(
         // 变更模式：携带变更点与现有文档，prompt 切换为精准修改式指令
         changeNote: (input?.changeNote as string) || undefined,
         existingDoc: ctx.existingDoc,
+        knowledge: ctx.knowledge,
       }),
     },
   ];

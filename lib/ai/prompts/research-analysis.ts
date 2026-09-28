@@ -1,5 +1,6 @@
 // 调研分析 prompt：合并调研+分析，边看边想边记，产出洞察摘要 + 用户故事 + 功能清单。
 import type { PromptModule } from "./types";
+import { renderKnowledgeBlock } from "./knowledge-render";
 
 export const researchAnalysisPrompt: PromptModule = {
   taskType: "research_analysis",
@@ -44,6 +45,9 @@ export const researchAnalysisPrompt: PromptModule = {
         .join("\n");
       parts.push("【对话历史（最近 20 轮，截断）】\n" + hist);
     }
+
+    const knowledge = renderKnowledgeBlock(vars.knowledge);
+    if (knowledge) parts.push(knowledge);
 
     // 变更模式：基于现有报告做精准修改，而非从零重写
     if (vars.changeNote && vars.existingDoc) {

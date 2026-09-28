@@ -1,5 +1,6 @@
 // 对话访谈 prompt：引导式完善需求，并渐进抽取结构化需求卡片。
 import type { PromptModule } from "./types";
+import { renderKnowledgeBlock } from "./knowledge-render";
 
 export const dialoguingPrompt: PromptModule = {
   taskType: "dialoguing",
@@ -54,6 +55,8 @@ export const dialoguingPrompt: PromptModule = {
         .join("\n\n");
       parts.push("【上游步骤产物参考】\n" + upstreamText);
     }
+    const knowledge = renderKnowledgeBlock(vars.knowledge);
+    if (knowledge) parts.push(knowledge);
     parts.push(`用户：${vars.message}`);
     return parts.join("\n\n");
   },

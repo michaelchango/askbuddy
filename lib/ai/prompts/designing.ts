@@ -1,6 +1,7 @@
 // 方案设计 prompt：输出方案文档（Markdown），覆盖产品方案、业务流程、技术方案要点。
 // 原型 HTML 由 prototypes.ts 独立生成（复用 designing 模型），本 prompt 仅产出方案文档。
 import type { PromptModule } from "./types";
+import { renderKnowledgeBlock } from "./knowledge-render";
 
 export const solutionWritingPrompt: PromptModule = {
   taskType: "solution_writing",
@@ -62,6 +63,9 @@ flowchart TD
         .join("\n");
       parts.push("【对话历史（最近 10 轮，截断）】\n" + hist);
     }
+
+    const knowledge = renderKnowledgeBlock(vars.knowledge);
+    if (knowledge) parts.push(knowledge);
 
     // 变更模式：基于现有方案文档做精准修改，而非从零重写
     if (vars.changeNote && vars.existingDoc) {

@@ -14,10 +14,24 @@ export interface PlatformError extends Error {
   status?: number;
 }
 
-export async function callPlatform<T = unknown>(path: string): Promise<T> {
+export interface CallPlatformOptions {
+  method?: "GET" | "POST";
+  body?: unknown;
+}
+
+export async function callPlatform<T = unknown>(
+  path: string,
+  opts: CallPlatformOptions = {}
+): Promise<T> {
   const url = `${BASE}${path.startsWith("/") ? path : `/${path}`}`;
+  const method = opts.method ?? "GET";
   const res = await fetch(url, {
-    headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {},
+    method,
+    headers: {
+      ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
+      ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
   });
 
   if (!res.ok) {

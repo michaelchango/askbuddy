@@ -1,4 +1,5 @@
 import type { PromptModule } from "./types";
+import { renderKnowledgeBlock } from "./knowledge-render";
 
 // 原型生成：输出单个自包含、可交互的高保真 HTML 原型（多页面 + 页面间跳转）。
 export const prototypeGenPrompt: PromptModule = {
@@ -25,6 +26,8 @@ export const prototypeGenPrompt: PromptModule = {
         lines.push(`### ${k}\n${v}`);
       }
     }
+    const knowledge = renderKnowledgeBlock(vars.knowledge);
+    if (knowledge) lines.push(knowledge);
     const instruction =
       vars.message && String(vars.message).trim().length
         ? `额外要求：${vars.message}`

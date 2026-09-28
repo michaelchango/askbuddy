@@ -1,5 +1,6 @@
 // PRD 生成 prompt：将上游所有产物积累式汇入一份完整的需求文档。
 import type { PromptModule } from "./types";
+import { renderKnowledgeBlock } from "./knowledge-render";
 
 export const prdWritingPrompt: PromptModule = {
   taskType: "prd_writing",
@@ -97,6 +98,9 @@ export const prdWritingPrompt: PromptModule = {
         .join("\n");
       parts.push("【对话历史（最近 15 轮，截断）】\n" + hist);
     }
+
+    const knowledge = renderKnowledgeBlock(vars.knowledge);
+    if (knowledge) parts.push(knowledge);
 
     // 变更模式：基于现有 PRD 做精准修改，而非从零重写
     if (vars.changeNote && vars.existingDoc) {

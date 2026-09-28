@@ -316,13 +316,21 @@ export async function checkConsistency(
   // ④ 溯源有效性（M2 降级：可插拔 resolver）
   const ctxExists = resolvers?.contextExists ?? (async () => true);
   const maxTurn = resolvers?.maxConversationTurn ? await resolvers.maxConversationTurn() : 0;
+  const decisionExists = resolvers?.decisionExists ?? (async () => true);
+  const knowledgeExists = resolvers?.knowledgeExists ?? (async () => true);
   for (const { source } of collectSources(body)) {
     if (source.decision_id != null) {
-      issues.push({ rule: "source_validity", level: "warn", message: "M2 阶段不应出现 decision_id（decisions 表尚未建立）" });
+      // M3：decision_id 是合法溯源，校验其真实存在（未注入 resolver 时放行）。
+      if (!(await decisionExists(String(source.decision_id)))) {
+        issues.push({ rule: "source_validity", level: "warn", message: `decision_id ${String(source.decision_id)} 无法解析（decisions 表中不存在）` });
+      }
     }
-    const knowledgeIds = Array.isArray(source.knowledge_ids) ? (source.knowledge_ids as unknown[]) : [];
-    if (knowledgeIds.length > 0) {
-      issues.push({ rule: "source_validity", level: "warn", message: "M2 阶段不应出现 knowledge_ids（knowledge_entries 表尚未建立）" });
+    const knowledgeIds = Array.isArray(source.knowledge_ids) ? (source.knowledge_ids as string[]) : [];
+    for (const kid of knowledgeIds) {
+      // M4：knowledge_id 是合法溯源，校验其真实存在（允许 deprecated 软删条目）。
+      if (!(await knowledgeExists(kid))) {
+        issues.push({ rule: "source_validity", level: "warn", message: `knowledge_id ${kid} 无法解析（knowledge_entries 表中不存在）` });
+      }
     }
     const turn = source.conversation_turn as number | null;
     if (turn != null) {

@@ -39,6 +39,7 @@ export const TABLES: ReadonlySet<string> = new Set([
   "decisions",
   "doc_sections",
   "visits", // 体验访问埋点（运营统计，非业务表）
+  "knowledge_entries", // M4 知识复利
 ]);
 
 /** 代码键 → PG 列名。同名项也必须显式列出（见维护约定 2）。 */
@@ -298,6 +299,24 @@ export const FIELD_MAP: Readonly<Record<string, Readonly<Record<string, string>>
     ip: "ip",
     created_at: "created_at",
   },
+
+  // ---------------- M4 知识复利 ----------------
+  knowledge_entries: {
+    id: "id",
+    project_id: "project_id",
+    title: "title",
+    content: "content",
+    embedding: "embedding", // vector(1024)
+    category: "category",
+    source_type: "source_type",
+    source_ref: "source_ref",
+    source_decision_id: "source_decision_id",
+    source_hash: "source_hash",
+    status: "status", // active / deprecated（软删）
+    access_count: "access_count",
+    created_at: "created_at",
+    updated_at: "updated_at",
+  },
 };
 
 /** PG 列名 → 代码键（由 FIELD_MAP 反转，构建期一次性生成）。 */
@@ -338,6 +357,7 @@ export const TIMESTAMP_COLS: Readonly<Record<string, readonly string[]>> = {
   decisions: ["confirmed_at"], // M3
   doc_sections: [], // M3（无时间戳列）
   visits: ["created_at"], // 体验访问埋点
+  knowledge_entries: ["created_at", "updated_at"], // M4
 };
 
 /**
@@ -374,6 +394,18 @@ export const JSONB_COLS: Readonly<Record<string, readonly string[]>> = {
   decisions: [], // M3（无 JSONB 列）
   doc_sections: ["source"], // M3
   visits: [], // 体验访问埋点（无 JSONB 列）
+  knowledge_entries: [], // M4（embedding 是 vector，非 JSONB，走 VECTOR_COLS）
+};
+
+/**
+ * VECTOR 列（列名口径）。pgvector 的 vector(N) 列，业务侧以 number[] 传递。
+ * 写入时：postgres 后端 JSON.stringify 成 '[0.1,0.2]'（pgvector 隐式 text→vector 转换），
+ *        cloudbase 后端追加 ::vector 强转（网关 SQL 通道无参数化，靠字面量转义）。
+ * 读出时：vector 列经网关/驱动序列化为字符串 '[0.1,0.2]'，由 VECTOR_PARSE_COLS 还原。
+ * 维度必须等于 EMBEDDING_DIMENSIONS（1024），由 lib/ai/embedding.ts 硬校验。
+ */
+export const VECTOR_COLS: Readonly<Record<string, readonly string[]>> = {
+  knowledge_entries: ["embedding"], // M4
 };
 
 /**
@@ -402,6 +434,7 @@ export const BIGINT_COLS: Readonly<Record<string, readonly string[]>> = {
   dev_contexts: ["requirement_id"],
   dev_context_versions: ["id"],
   visits: ["id"], // 体验访问埋点：id 为 BIGINT 自增主键
+  knowledge_entries: [], // M4（access_count 为 INTEGER，非 int8）
 };
 
 /**
@@ -435,6 +468,7 @@ export const ALLOWED_ID_KEYS: Readonly<Record<string, readonly string[]>> = {
   decisions: ["id"], // M3
   doc_sections: ["id"], // M3
   visits: ["id"], // 体验访问埋点
+  knowledge_entries: ["id"], // M4
 };
 
 /**
@@ -465,4 +499,5 @@ export const ORDER_HINT: Readonly<Record<string, string | undefined>> = {
   decisions: "confirmed_at", // M3
   doc_sections: "id", // M3（无时间戳列，用主键排序）
   visits: "id", // 体验访问埋点：按自增主键即时间序
+  knowledge_entries: "updated_at", // M4
 };
