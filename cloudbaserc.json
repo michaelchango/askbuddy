@@ -1,6 +1,19 @@
 {
   "envId": "askbuddy-d2gv2tz9xea0ff925",
   "cloudrun": {
-    "name": "askbuddy-web"
+    "name": "askbuddy-web",
+    "serverConfig": {
+      "Cpu": 0.5,
+      "Mem": 1,
+      "MinNum": 0,
+      "MaxNum": 2,
+      "PolicyDetails": [
+        { "PolicyType": "cpu", "PolicyThreshold": 60 },
+        { "PolicyType": "mem", "PolicyThreshold": 60 }
+      ],
+      "Port": 3000,
+      "OpenAccessTypes": ["PUBLIC"],
+      "CustomLogs": "stdout"
+    }
   }
 }
