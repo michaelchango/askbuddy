@@ -318,3 +318,11 @@
 - 本提交仅追加本核查记录（CHANGELOG 维护），随后推送至 `origin/feat/m5-lifecycle-cascade`。
 - 关于 `origin/master`：`master`（本地 `711a9a5`）跟踪 `origin/master`（`32f352a`），二者仅差 1 个提交（固化 cloudbaserc.json），且**不包含**这 16 个 M5 提交。若希望 M5 工作也进入 `origin/master`，需先将 `feat/m5-lifecycle-cascade` 合并进 `master` 再推送（非强制推送），待确认后执行。
 - 更正说明：2026-10-10 ~ 2026-10-14 各同步章节文字写「推送至 origin/master」，实际推送目标为该分支的跟踪远端 `origin/feat/m5-lifecycle-cascade`；本次据实更正口径。
+
+## 同步核查（2026-10-17）— 当前分支已与 GitHub 一致，M5 尚未合入 master
+
+- 本日自动化同步核查：当前工作分支 `feat/m5-lifecycle-cascade`（HEAD `4592450`）与其远端 `origin/feat/m5-lifecycle-cascade` **完全一致（0 个待推送提交）**；`git status` 工作区干净，无未提交改动。
+- 相对 `origin/master`，当前分支领先 17 个提交，即 M5 里程碑全量工作（P0 测试基建 / P1 需求生命周期状态机 / P2 变更联动 DevContext / P3 多 Provider AI 抽象层 + 确定性 Mock 引擎 / P4 测试分层与 CI）、`待办事项.md` 补充 M5 合并前注意事项（`docs: 998bde8`），以及 7 次 CHANGELOG 自动维护提交。这些提交**此前均已推送至 `origin/feat/m5-lifecycle-cascade`**，GitHub 上已有对应内容（参见 2026-09-28 ~ 2026-10-15 各「M5 同步推送」章节），并非未推送。
+- `master`（本地）比 `origin/master` 仅多 1 个提交（固化 cloudbaserc.json），`origin/master` 暂不包含这 17 个 M5 提交。
+- **待办（需用户确认）**：若希望 M5 正式进入主干，需将 `feat/m5-lifecycle-cascade` 合并进 `master` 后再推送 `origin/master`（非强制推送）。此操作延续 2026-10-15 核查记录的「待确认后执行」口径，本次未执行、未做任何合并或强制推送。
+- 本提交仅追加本核查记录（CHANGELOG 维护），随后推送至 `origin/feat/m5-lifecycle-cascade`，保持分支远端与本地一致。
